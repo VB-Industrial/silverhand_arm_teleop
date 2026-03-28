@@ -3,8 +3,7 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import URDFLoader from "urdf-loader";
 
-const JOINT_NAMES = ["joint_1", "joint_2", "joint_3", "joint_4", "joint_5", "joint_6"];
-const ARM_MOUNT_POSITION = new THREE.Vector3(0.03, 0, 0.18);
+const JOINT_NAMES = ["arm_joint_1", "arm_joint_2", "arm_joint_3", "arm_joint_4", "arm_joint_5", "arm_joint_6"];
 
 type KinematicSceneProps = {
   realJoints: number[];
@@ -13,9 +12,8 @@ type KinematicSceneProps = {
 };
 
 type LoadedSceneRefs = {
-  rover: any | null;
-  realArm: any | null;
-  targetArm: any | null;
+  realSystem: any | null;
+  targetSystem: any | null;
   realGripper: THREE.Group | null;
   targetGripper: THREE.Group | null;
 };
@@ -23,9 +21,8 @@ type LoadedSceneRefs = {
 export function KinematicScene(props: KinematicSceneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
   const sceneRefs = useRef<LoadedSceneRefs>({
-    rover: null,
-    realArm: null,
-    targetArm: null,
+    realSystem: null,
+    targetSystem: null,
     realGripper: null,
     targetGripper: null,
   });
@@ -83,7 +80,7 @@ export function KinematicScene(props: KinematicSceneProps) {
     scene.add(robotRoot);
 
     const packageMap = {
-      silverhand_rover_description: "/assets/rover",
+      silverhand_rover_model: "/assets/rover_model",
       silverhand_arm_description: "/assets/arm",
     };
 
@@ -108,16 +105,15 @@ export function KinematicScene(props: KinematicSceneProps) {
     resize();
 
     Promise.all([
-      loader.loadAsync("/assets/rover/urdf/silverhand_rover.urdf"),
-      loader.loadAsync("/assets/arm/urdf/silverhand.urdf"),
-      loader.loadAsync("/assets/arm/urdf/silverhand.urdf"),
+      loader.loadAsync("/assets/system/urdf/silverhand_system.urdf"),
+      loader.loadAsync("/assets/system/urdf/silverhand_system.urdf"),
     ])
-      .then(([rover, realArm, targetArm]) => {
+      .then(([realSystem, targetSystem]) => {
         if (disposed) {
           return;
         }
 
-        rover.traverse((object: THREE.Object3D) => {
+        realSystem.traverse((object: THREE.Object3D) => {
           const mesh = object as THREE.Mesh;
           if ("material" in mesh && mesh.material) {
             const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
@@ -129,36 +125,31 @@ export function KinematicScene(props: KinematicSceneProps) {
           }
         });
 
-        tintRobot(targetArm, 0x6bc7ff, 0.22);
+        configureTargetRobot(targetSystem);
 
-        realArm.position.copy(ARM_MOUNT_POSITION);
-        targetArm.position.copy(ARM_MOUNT_POSITION);
-
-        robotRoot.add(rover);
-        robotRoot.add(realArm);
-        robotRoot.add(targetArm);
+        robotRoot.add(realSystem);
+        robotRoot.add(targetSystem);
 
         const realGripper = createGripperIndicator(0x9ae476, 0.95);
         const targetGripper = createGripperIndicator(0x6bc7ff, 0.42);
 
-        const realTool = realArm.getObjectByName("link_6");
-        const targetTool = targetArm.getObjectByName("link_6");
+        const realTool = realSystem.getObjectByName("arm_link_6");
+        const targetTool = targetSystem.getObjectByName("arm_link_6");
         realTool?.add(realGripper);
         targetTool?.add(targetGripper);
 
         sceneRefs.current = {
-          rover,
-          realArm,
-          targetArm,
+          realSystem,
+          targetSystem,
           realGripper,
           targetGripper,
         };
 
-        applyArmJointValues(realArm, props.realJoints);
-        applyArmJointValues(targetArm, props.targetJoints);
+        applyArmJointValues(realSystem, props.realJoints);
+        applyArmJointValues(targetSystem, props.targetJoints);
         setGripperIndicator(realGripper, props.gripperPercent);
         setGripperIndicator(targetGripper, props.gripperPercent);
-        targetArm.visible = !jointArraysEqual(props.realJoints, props.targetJoints);
+        targetSystem.visible = !jointArraysEqual(props.realJoints, props.targetJoints);
 
         setLoadState("ready");
       })
@@ -189,13 +180,13 @@ export function KinematicScene(props: KinematicSceneProps) {
   }, []);
 
   useEffect(() => {
-    if (!sceneRefs.current.realArm || !sceneRefs.current.targetArm) {
+    if (!sceneRefs.current.realSystem || !sceneRefs.current.targetSystem) {
       return;
     }
 
-    applyArmJointValues(sceneRefs.current.realArm, props.realJoints);
-    applyArmJointValues(sceneRefs.current.targetArm, props.targetJoints);
-    sceneRefs.current.targetArm.visible = !jointArraysEqual(props.realJoints, props.targetJoints);
+    applyArmJointValues(sceneRefs.current.realSystem, props.realJoints);
+    applyArmJointValues(sceneRefs.current.targetSystem, props.targetJoints);
+    sceneRefs.current.targetSystem.visible = !jointArraysEqual(props.realJoints, props.targetJoints);
   }, [props.realJoints, props.targetJoints]);
 
   useEffect(() => {
@@ -225,10 +216,19 @@ function applyArmJointValues(robot: any, joints: number[]) {
   });
 }
 
-function tintRobot(robot: any, color: number, opacity: number) {
+function configureTargetRobot(robot: any) {
   robot.traverse((object: THREE.Object3D) => {
+    if (object === robot) {
+      return;
+    }
+
     const mesh = object as THREE.Mesh;
     if (!("material" in mesh) || !mesh.material) {
+      return;
+    }
+
+    if (!hasArmAncestor(object)) {
+      object.visible = false;
       return;
     }
 
@@ -236,16 +236,27 @@ function tintRobot(robot: any, color: number, opacity: number) {
     const nextMaterials = materials.map((material) => {
       const source = material as THREE.MeshStandardMaterial;
       const tinted = source.clone();
-      tinted.color = new THREE.Color(color);
+      tinted.color = new THREE.Color(0x6bc7ff);
       tinted.transparent = true;
-      tinted.opacity = opacity;
+      tinted.opacity = 0.22;
       tinted.depthWrite = false;
-      tinted.emissive = new THREE.Color(color).multiplyScalar(0.08);
+      tinted.emissive = new THREE.Color(0x6bc7ff).multiplyScalar(0.08);
       return tinted;
     });
 
     mesh.material = Array.isArray(mesh.material) ? nextMaterials : nextMaterials[0];
   });
+}
+
+function hasArmAncestor(object: THREE.Object3D | null): boolean {
+  let current: THREE.Object3D | null = object;
+  while (current) {
+    if (current.name.startsWith("arm_")) {
+      return true;
+    }
+    current = current.parent;
+  }
+  return false;
 }
 
 function createGripperIndicator(color: number, opacity: number) {
