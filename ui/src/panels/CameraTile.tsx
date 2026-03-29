@@ -28,7 +28,7 @@ export function CameraTile({ cameraId, compact = false }: CameraTileProps) {
     <section className={compact ? "panel camera-card camera-card-compact" : "panel camera-card"}>
       <div className={compact ? "panel-head camera-panel-head compact" : "panel-head camera-panel-head"}>
         <div className="camera-head-copy">
-          <h2>{state.title}</h2>
+          <h2 className="camera-title">{state.title}</h2>
           {compact ? null : <p className="camera-subtext">{statusLabel(state.status)}</p>}
         </div>
         <div className="camera-actions">

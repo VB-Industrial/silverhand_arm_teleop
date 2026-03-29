@@ -176,14 +176,14 @@
     <visual>
       <origin rpy="-1.5707963267948966 -0.890121786 0" xyz="-0.10706 -0.088 0.09654"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark"/>
     </visual>
     <collision>
       <origin rpy="-1.5707963267948966 -0.890121786 0" xyz="-0.10706 -0.088 0.09654"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -204,14 +204,14 @@
     <visual>
       <origin rpy="-1.5707963267948966 -0.928081215 0" xyz="0.10790 -0.088 0.09683"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark"/>
     </visual>
     <collision>
       <origin rpy="-1.5707963267948966 -0.928081215 0" xyz="0.10790 -0.088 0.09683"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -232,14 +232,14 @@
     <visual>
       <origin rpy="-1.5707963267948966 0.869224977 0" xyz="0.14377 -0.088 0.09623"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark"/>
     </visual>
     <collision>
       <origin rpy="-1.5707963267948966 0.869224977 0" xyz="0.14377 -0.088 0.09623"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -293,14 +293,14 @@
     <visual>
       <origin rpy="-1.5707963267948966 0.890121786 3.141592653589793" xyz="-0.10706 0.088 0.09654"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark"/>
     </visual>
     <collision>
       <origin rpy="-1.5707963267948966 0.890121786 3.141592653589793" xyz="-0.10706 0.088 0.09654"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -321,14 +321,14 @@
     <visual>
       <origin rpy="-1.5707963267948966 0.928081215 3.141592653589793" xyz="0.10790 0.088 0.09683"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark"/>
     </visual>
     <collision>
       <origin rpy="-1.5707963267948966 0.928081215 3.141592653589793" xyz="0.10790 0.088 0.09683"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -349,14 +349,14 @@
     <visual>
       <origin rpy="-1.5707963267948966 -0.869224977 3.141592653589793" xyz="0.14377 0.088 0.09623"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
       <material name="dark"/>
     </visual>
     <collision>
       <origin rpy="-1.5707963267948966 -0.869224977 3.141592653589793" xyz="0.14377 0.088 0.09623"/>
       <geometry>
-        <mesh filename="package://silverhand_rover_model/meshes/WheelMesh.stl" scale="0.001 0.001 0.001"/>
+        <mesh filename="package://silverhand_rover_model/meshes/Wheel.stl" scale="0.001 0.001 0.001"/>
       </geometry>
     </collision>
     <inertial>
@@ -390,16 +390,16 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/base_link.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/base_link.STL"/>
       </geometry>
       <material name="">
-        <color rgba="1 1 0 1"/>
+        <color rgba="0.80 0.80 0.82 1"/>
       </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/base_link.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/base_link.STL"/>
       </geometry>
     </collision>
   </link>
@@ -417,16 +417,16 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_1.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_1.STL"/>
       </geometry>
       <material name="">
-        <color rgba="1 1 0 1"/>
+        <color rgba="0.80 0.80 0.82 1"/>
       </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_1.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_1.STL"/>
       </geometry>
     </collision>
   </link>
@@ -445,16 +445,16 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_2.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_2.STL"/>
       </geometry>
       <material name="">
-        <color rgba="1 1 0 1"/>
+        <color rgba="0.80 0.80 0.82 1"/>
       </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_2.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_2.STL"/>
       </geometry>
     </collision>
   </link>
@@ -473,16 +473,16 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_3.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_3.STL"/>
       </geometry>
       <material name="">
-        <color rgba="1 1 0 1"/>
+        <color rgba="0.80 0.80 0.82 1"/>
       </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_3.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_3.STL"/>
       </geometry>
     </collision>
   </link>
@@ -501,16 +501,16 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_4.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_4.STL"/>
       </geometry>
       <material name="">
-        <color rgba="1 1 0 1"/>
+        <color rgba="0.80 0.80 0.82 1"/>
       </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_4.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_4.STL"/>
       </geometry>
     </collision>
   </link>
@@ -529,16 +529,16 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_5.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_5.STL"/>
       </geometry>
       <material name="">
-        <color rgba="1 1 0 1"/>
+        <color rgba="0.80 0.80 0.82 1"/>
       </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_5.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_5.STL"/>
       </geometry>
     </collision>
   </link>
@@ -557,16 +557,16 @@
     <visual>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_6.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_6.STL"/>
       </geometry>
       <material name="">
-        <color rgba="1 1 0 1"/>
+        <color rgba="0.80 0.80 0.82 1"/>
       </material>
     </visual>
     <collision>
       <origin rpy="0 0 0" xyz="0 0 0"/>
       <geometry>
-        <mesh filename="package://silverhand_arm_description/meshes/link_6.STL"/>
+        <mesh filename="package://silverhand_arm_model/meshes/link_6.STL"/>
       </geometry>
     </collision>
   </link>

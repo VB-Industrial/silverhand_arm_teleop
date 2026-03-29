@@ -41,7 +41,6 @@ export function ExecutePanel() {
       <div className="estop-actions">
         <button className="kill-switch inline" onClick={activateEstop} type="button">
           <span>АВАРИЙНЫЙ СТОП</span>
-          <small>KILL SWITCH</small>
         </button>
         <button
           className="secondary-action danger-outline"

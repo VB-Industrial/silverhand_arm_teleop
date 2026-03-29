@@ -134,6 +134,40 @@ export function updateTcp(index: number, value: number): void {
   appState.value = "target_locked";
 }
 
+export function updateTcpPositionFromGizmo(position: [number, number, number]): void {
+  if (editingDisabled.value) {
+    return;
+  }
+
+  controlMode.value = "tcp";
+  interactionMode.value = "planner_gizmo";
+
+  const next = cloneTarget(previewTarget.value);
+  next.tcp[0] = position[0];
+  next.tcp[1] = position[1];
+  next.tcp[2] = position[2];
+  previewTarget.value = next;
+  lockedTarget.value = cloneTarget(next);
+  appState.value = "target_locked";
+}
+
+export function updateTcpOrientationFromGizmo(orientation: [number, number, number]): void {
+  if (editingDisabled.value) {
+    return;
+  }
+
+  controlMode.value = "tcp";
+  interactionMode.value = "planner_gizmo";
+
+  const next = cloneTarget(previewTarget.value);
+  next.tcp[3] = orientation[0];
+  next.tcp[4] = orientation[1];
+  next.tcp[5] = orientation[2];
+  previewTarget.value = next;
+  lockedTarget.value = cloneTarget(next);
+  appState.value = "target_locked";
+}
+
 export function updateGripper(value: number): void {
   if (editingDisabled.value) {
     return;

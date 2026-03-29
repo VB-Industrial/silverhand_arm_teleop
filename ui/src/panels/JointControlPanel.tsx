@@ -1,5 +1,5 @@
 import { JOINT_LABELS } from "../app/viewModel";
-import { controlMode, editingDisabled, interactionMode, previewTarget, setControlMode, setInteractionMode, updateJoint } from "../store/appState";
+import { editingDisabled, interactionMode, previewTarget, setControlMode, setInteractionMode, updateJoint } from "../store/appState";
 import { SliderRow } from "../components/SliderRow";
 
 export function JointControlPanel() {
@@ -13,7 +13,6 @@ export function JointControlPanel() {
     >
       <div className="panel-head">
         <h2>Управление звеньями</h2>
-        <span className="muted-text">{controlMode.value === "joint" ? "Сдвигает цель планировщика" : "Клик активирует контур звеньев"}</span>
       </div>
 
       <div className="slider-list">

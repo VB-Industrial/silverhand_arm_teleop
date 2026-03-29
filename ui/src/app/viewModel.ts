@@ -38,17 +38,17 @@ export function translateSource(source: string): string {
 export function translateInteractionMode(mode: string): string {
   switch (mode) {
     case "idle":
-      return "Ожидание команды";
+      return "Ожидание";
     case "servo_joystick":
-      return "Прямой сервоинг джойстиком";
+      return "Джойстик";
     case "servo_gripper":
-      return "Прямое управление захватом";
+      return "Захват";
     case "planner_gizmo":
-      return "Цель планировщика: gizmo";
+      return "Gizmo";
     case "planner_joint":
-      return "Цель планировщика: звенья";
+      return "Звенья";
     case "planner_tcp":
-      return "Цель планировщика: TCP";
+      return "Звено захвата";
     default:
       return mode;
   }

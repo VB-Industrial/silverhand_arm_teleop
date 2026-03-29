@@ -1,5 +1,5 @@
 import { TCP_LABELS } from "../app/viewModel";
-import { controlMode, editingDisabled, interactionMode, previewTarget, setControlMode, setInteractionMode, updateTcp } from "../store/appState";
+import { editingDisabled, interactionMode, previewTarget, setControlMode, setInteractionMode, updateTcp } from "../store/appState";
 import { SliderRow } from "../components/SliderRow";
 
 export function TcpControlPanel() {
@@ -12,8 +12,7 @@ export function TcpControlPanel() {
       }}
     >
       <div className="panel-head">
-        <h2>Управление TCP</h2>
-        <span className="muted-text">{controlMode.value === "tcp" ? "Сдвигает цель планировщика" : "Клик активирует контур TCP"}</span>
+        <h2>Управление звеном захвата</h2>
       </div>
 
       <div className="slider-list">
