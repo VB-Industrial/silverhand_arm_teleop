@@ -5,7 +5,9 @@ import { TransformControls } from "three/examples/jsm/controls/TransformControls
 import URDFLoader from "urdf-loader";
 
 const JOINT_NAMES = ["arm_joint_1", "arm_joint_2", "arm_joint_3", "arm_joint_4", "arm_joint_5", "arm_joint_6"];
-const TOOL_OFFSET = new THREE.Vector3(0, 0.028, 0.098);
+const HAND_JOINT_NAMES = ["hand_left_finger_joint", "hand_right_finger_joint"];
+const HAND_MAX_OPENING = 0.01;
+const TOOL_OFFSET = new THREE.Vector3(0, 0, 0.105);
 
 type KinematicSceneProps = {
   realJoints: number[];
@@ -21,8 +23,6 @@ type KinematicSceneProps = {
 type LoadedSceneRefs = {
   realSystem: any | null;
   targetSystem: any | null;
-  realGripper: THREE.Group | null;
-  targetGripper: THREE.Group | null;
   robotRoot: THREE.Group | null;
   realTool: THREE.Object3D | null;
   targetTool: THREE.Object3D | null;
@@ -36,8 +36,6 @@ export function KinematicScene(props: KinematicSceneProps) {
   const sceneRefs = useRef<LoadedSceneRefs>({
     realSystem: null,
     targetSystem: null,
-    realGripper: null,
-    targetGripper: null,
     robotRoot: null,
     realTool: null,
     targetTool: null,
@@ -47,6 +45,8 @@ export function KinematicScene(props: KinematicSceneProps) {
   const rotateTransformRef = useRef<TransformControls | null>(null);
   const draggingRef = useRef(false);
   const sphereDraggingRef = useRef(false);
+  const sphereHoveredRef = useRef(false);
+  const activeHoverModeRef = useRef<"translate" | "rotate" | "none">("none");
   const syncingGizmoRef = useRef(false);
   const initializedFromToolRef = useRef(false);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
@@ -116,7 +116,7 @@ export function KinematicScene(props: KinematicSceneProps) {
     const translateTransform = new TransformControls(camera, renderer.domElement);
     translateTransform.setMode("translate");
     translateTransform.setSpace("world");
-    translateTransform.size = 1.02;
+    translateTransform.size = 1.14;
     translateTransform.enabled = false;
     translateTransform.attach(gizmoAnchor);
     configureTranslateHelper(translateTransform);
@@ -124,7 +124,7 @@ export function KinematicScene(props: KinematicSceneProps) {
     const rotateTransform = new TransformControls(camera, renderer.domElement);
     rotateTransform.setMode("rotate");
     rotateTransform.setSpace("local");
-    rotateTransform.size = 0.74;
+    rotateTransform.size = 0.88;
     rotateTransform.enabled = false;
     rotateTransform.attach(gizmoAnchor);
     configureRotateHelper(rotateTransform);
@@ -133,6 +133,8 @@ export function KinematicScene(props: KinematicSceneProps) {
       draggingRef.current = value;
       controls.enabled = !value;
       if (!value && !sphereDraggingRef.current) {
+        translateTransform.axis = null;
+        rotateTransform.axis = null;
         setActiveControl("none");
       }
     };
@@ -188,9 +190,49 @@ export function KinematicScene(props: KinematicSceneProps) {
     const dragOffset = new THREE.Vector3();
 
     const setActiveControl = (mode: "translate" | "rotate" | "none") => {
+      if (activeHoverModeRef.current !== mode) {
+        translateTransform.axis = null;
+        rotateTransform.axis = null;
+        activeHoverModeRef.current = mode;
+      }
+
       translateTransform.enabled = mode === "translate";
       rotateTransform.enabled = mode === "rotate";
       renderer.domElement.style.cursor = mode === "none" ? "" : "grab";
+    };
+
+    const setSphereHover = (hovered: boolean) => {
+      if (sphereHoveredRef.current === hovered) {
+        return;
+      }
+
+      sphereHoveredRef.current = hovered;
+      gizmoVisual.traverse((object) => {
+        const mesh = object as THREE.Mesh;
+        if (!("material" in mesh) || !mesh.material) {
+          return;
+        }
+
+        const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        materials.forEach((material) => {
+          const typed = material as THREE.MeshStandardMaterial | THREE.MeshBasicMaterial;
+          if (object.name === "gizmo_core") {
+            if ("color" in typed) {
+              typed.color.set(hovered ? 0xffd35c : 0x6bc7ff);
+            }
+            if ("emissive" in typed) {
+              typed.emissive.set(hovered ? 0xffb200 : 0x6bc7ff).multiplyScalar(hovered ? 0.28 : 0.18);
+            }
+          }
+          if (object.name === "gizmo_shell") {
+            if ("color" in typed) {
+              typed.color.set(hovered ? 0xffd35c : 0x6bc7ff);
+            }
+            typed.opacity = hovered ? 0.2 : 0.1;
+          }
+        });
+      });
+      gizmoVisual.scale.setScalar(hovered ? 1.08 : 1);
     };
 
     const pruneHelpers = () => {
@@ -222,6 +264,11 @@ export function KinematicScene(props: KinematicSceneProps) {
       return "none";
     };
 
+    const isSphereHovered = () => {
+      raycaster.setFromCamera(pointer, camera);
+      return raycaster.intersectObjects(gizmoHandles, false).length > 0;
+    };
+
     const emitTargetTcpFromAnchor = () => {
       if (syncingGizmoRef.current || !sceneRefs.current.robotRoot || !props.onTargetTcpChange) {
         return;
@@ -245,13 +292,7 @@ export function KinematicScene(props: KinematicSceneProps) {
       }
 
       updatePointer(event);
-      if (resolveHoveredHandle() !== "none") {
-        return;
-      }
-
-      raycaster.setFromCamera(pointer, camera);
-      const intersections = raycaster.intersectObjects(gizmoHandles, false);
-      if (intersections.length === 0) {
+      if (!isSphereHovered()) {
         return;
       }
 
@@ -266,6 +307,7 @@ export function KinematicScene(props: KinematicSceneProps) {
       controls.enabled = false;
       dragOffset.copy(gizmoAnchor.position).sub(dragIntersection);
       renderer.domElement.style.cursor = "grabbing";
+      setSphereHover(true);
       event.preventDefault();
       event.stopPropagation();
     };
@@ -273,8 +315,10 @@ export function KinematicScene(props: KinematicSceneProps) {
     const onSpherePointerMove = (event: PointerEvent) => {
       if (!sphereDraggingRef.current || draggingRef.current) {
         updatePointer(event);
+        const sphereHovered = isSphereHovered();
+        setSphereHover(sphereHovered);
         if (!draggingRef.current) {
-          setActiveControl(resolveHoveredHandle());
+          setActiveControl(sphereHovered ? "none" : resolveHoveredHandle());
         }
         return;
       }
@@ -292,11 +336,13 @@ export function KinematicScene(props: KinematicSceneProps) {
 
     const stopSphereDrag = () => {
       if (!sphereDraggingRef.current) {
+        setSphereHover(false);
         return;
       }
 
       sphereDraggingRef.current = false;
       controls.enabled = !draggingRef.current;
+      setSphereHover(false);
       setActiveControl("none");
     };
 
@@ -309,6 +355,7 @@ export function KinematicScene(props: KinematicSceneProps) {
       silverhand_rover_model: "/assets/rover_model",
       silverhand_arm_description: "/assets/arm",
       silverhand_arm_model: "/assets/arm",
+      silverhand_hand_model: "/assets/hand",
     };
 
     const loader = new URDFLoader();
@@ -357,23 +404,17 @@ export function KinematicScene(props: KinematicSceneProps) {
         robotRoot.add(realSystem);
         robotRoot.add(targetSystem);
 
-        const realGripper = createGripperIndicator(0x9ae476, 0.95);
-        const targetGripper = createGripperIndicator(0x6bc7ff, 0.42);
         const realTcp = createTcpMarker(0x9ae476, 0.95, 1);
         const targetTcp = createTcpMarker(0x6bc7ff, 0.72, 1.08);
 
-        const realTool = realSystem.getObjectByName("arm_link_6");
-        const targetTool = targetSystem.getObjectByName("arm_link_6");
-        realTool?.add(realGripper);
-        targetTool?.add(targetGripper);
+        const realTool = realSystem.getObjectByName("hand_gripper_link") ?? realSystem.getObjectByName("arm_link_6");
+        const targetTool = targetSystem.getObjectByName("hand_gripper_link") ?? targetSystem.getObjectByName("arm_link_6");
         realTool?.add(realTcp);
         targetTool?.add(targetTcp);
 
         sceneRefs.current = {
           realSystem,
           targetSystem,
-          realGripper,
-          targetGripper,
           robotRoot,
           realTool,
           targetTool,
@@ -382,8 +423,8 @@ export function KinematicScene(props: KinematicSceneProps) {
 
         applyArmJointValues(realSystem, props.realJoints);
         applyArmJointValues(targetSystem, props.targetJoints);
-        setGripperIndicator(realGripper, props.gripperPercent);
-        setGripperIndicator(targetGripper, props.gripperPercent);
+        applyHandJointValues(realSystem, props.gripperPercent);
+        applyHandJointValues(targetSystem, props.gripperPercent);
         initializeGizmoFromTool(
           sceneRefs.current,
           props.targetTcp,
@@ -426,6 +467,7 @@ export function KinematicScene(props: KinematicSceneProps) {
       renderer.domElement.removeEventListener("pointermove", onSpherePointerMove);
       window.removeEventListener("pointerup", stopSphereDrag);
       window.removeEventListener("pointercancel", stopSphereDrag);
+      setSphereHover(false);
       translateTransform.dispose();
       rotateTransform.dispose();
       translateTransformRef.current = null;
@@ -442,9 +484,11 @@ export function KinematicScene(props: KinematicSceneProps) {
 
     applyArmJointValues(sceneRefs.current.realSystem, props.realJoints);
     applyArmJointValues(sceneRefs.current.targetSystem, props.targetJoints);
+    applyHandJointValues(sceneRefs.current.realSystem, props.gripperPercent);
+    applyHandJointValues(sceneRefs.current.targetSystem, props.gripperPercent);
     sceneRefs.current.targetSystem.visible = !jointArraysEqual(props.realJoints, props.targetJoints);
     emitTcpPositions(sceneRefs.current, props.onTcpPositionChange);
-  }, [props.realJoints, props.targetJoints]);
+  }, [props.realJoints, props.targetJoints, props.gripperPercent]);
 
   useEffect(() => {
     if (!sceneRefs.current.gizmoAnchor || !sceneRefs.current.robotRoot || draggingRef.current || sphereDraggingRef.current) {
@@ -469,15 +513,6 @@ export function KinematicScene(props: KinematicSceneProps) {
     props.targetOrientation[2],
   ]);
 
-  useEffect(() => {
-    if (sceneRefs.current.realGripper) {
-      setGripperIndicator(sceneRefs.current.realGripper, props.gripperPercent);
-    }
-    if (sceneRefs.current.targetGripper) {
-      setGripperIndicator(sceneRefs.current.targetGripper, props.gripperPercent);
-    }
-  }, [props.gripperPercent]);
-
   return (
     <div className="model-canvas-shell" ref={hostRef}>
       {loadState !== "ready" ? (
@@ -496,6 +531,13 @@ function applyArmJointValues(robot: any, joints: number[]) {
   });
 }
 
+function applyHandJointValues(robot: any, percent: number) {
+  const opening = HAND_MAX_OPENING * THREE.MathUtils.clamp(percent / 100, 0, 1);
+  HAND_JOINT_NAMES.forEach((jointName) => {
+    robot.setJointValue(jointName, opening);
+  });
+}
+
 function configureTargetRobot(robot: any) {
   robot.traverse((object: THREE.Object3D) => {
     if (object === robot) {
@@ -507,7 +549,7 @@ function configureTargetRobot(robot: any) {
       return;
     }
 
-    if (!hasArmAncestor(object)) {
+    if (!hasManipulatorAncestor(object)) {
       object.visible = false;
       return;
     }
@@ -528,46 +570,15 @@ function configureTargetRobot(robot: any) {
   });
 }
 
-function hasArmAncestor(object: THREE.Object3D | null): boolean {
+function hasManipulatorAncestor(object: THREE.Object3D | null): boolean {
   let current: THREE.Object3D | null = object;
   while (current) {
-    if (current.name.startsWith("arm_")) {
+    if (current.name.startsWith("arm_") || current.name.startsWith("hand_")) {
       return true;
     }
     current = current.parent;
   }
   return false;
-}
-
-function createGripperIndicator(color: number, opacity: number) {
-  const group = new THREE.Group();
-  group.name = "gripper_indicator";
-  group.position.copy(TOOL_OFFSET);
-
-  const jawGeometry = new THREE.BoxGeometry(0.01, 0.045, 0.01);
-  const palmGeometry = new THREE.BoxGeometry(0.018, 0.02, 0.018);
-  const material = new THREE.MeshStandardMaterial({
-    color,
-    transparent: opacity < 1,
-    opacity,
-    roughness: 0.45,
-    metalness: 0.18,
-  });
-
-  const palm = new THREE.Mesh(palmGeometry, material.clone());
-  const leftJaw = new THREE.Mesh(jawGeometry, material.clone());
-  const rightJaw = new THREE.Mesh(jawGeometry, material.clone());
-
-  leftJaw.name = "left_jaw";
-  rightJaw.name = "right_jaw";
-  leftJaw.position.set(-0.012, 0.028, 0);
-  rightJaw.position.set(0.012, 0.028, 0);
-  palm.position.set(0, 0, 0);
-
-  group.add(palm);
-  group.add(leftJaw);
-  group.add(rightJaw);
-  return group;
 }
 
 function createTcpMarker(color: number, opacity: number, scale: number) {
@@ -619,20 +630,6 @@ function createAxisLine(direction: THREE.Vector3, color: number, opacity: number
     depthWrite: false,
   });
   return new THREE.Line(geometry, material);
-}
-
-function setGripperIndicator(group: THREE.Group, percent: number) {
-  const opening = 0.012 + 0.028 * (percent / 100);
-  const leftJaw = group.getObjectByName("left_jaw");
-  const rightJaw = group.getObjectByName("right_jaw");
-
-  if (leftJaw) {
-    leftJaw.position.x = -opening * 0.5;
-  }
-
-  if (rightJaw) {
-    rightJaw.position.x = opening * 0.5;
-  }
 }
 
 function jointArraysEqual(a: number[], b: number[]) {
@@ -726,7 +723,7 @@ function createGizmoVisual() {
   const shell = new THREE.Mesh(new THREE.SphereGeometry(0.04, 24, 24), shellMaterial);
   const core = new THREE.Mesh(new THREE.SphereGeometry(0.013, 16, 16), coreMaterial);
   const hitTarget = new THREE.Mesh(
-    new THREE.SphereGeometry(0.1, 18, 18),
+    new THREE.SphereGeometry(0.03, 18, 18),
     new THREE.MeshBasicMaterial({
       transparent: true,
       opacity: 0,
