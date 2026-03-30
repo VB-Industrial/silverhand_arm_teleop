@@ -4,22 +4,20 @@
 
 `silverhand_arm_teleop` is a teleoperation system for a rover-mounted manipulator arm.
 
-The system is split into four layers:
+The current target architecture is split into three runtime layers:
 
 1. `ui`
    The operator console. Displays cameras, kinematic model, controls, safety state, and execution state.
-2. `operator_backend`
-   Local process on the operator workstation. Handles input devices, local preview logic, and later local MoveIt integration.
-3. `robot_gateway`
-   Network boundary on the robot side. Owns sessions, watchdog, and safety routing.
-4. `robot_bridge`
-   ROS 2 integration layer. Connects gateway commands to the real manipulator, gripper, and robot state.
+2. `preview_bridge`
+   Local websocket bridge on the operator workstation. Connected to local `ROS 2 + MoveIt 2`. Used only for IK, collision checking, and preview validation.
+3. `robot_bridge`
+   Remote websocket bridge on the robot computer. Connected to robot-side `MoveIt 2 / ros2_control / executor`. Used only for real robot state and real execution.
 
 ## Design Principles
 
 1. The GUI stays lightweight.
-2. Safety logic is explicit and centralized.
-3. Preview and execution are separate concepts.
+2. Preview and execution are strictly separate concepts.
+3. Local `MoveIt 2` never commands hardware directly.
 4. Real motion only starts by explicit operator action.
 5. `E-STOP` overrides every other action.
 
@@ -50,15 +48,15 @@ Not included yet:
 ### Operator workstation
 
 - `ui`
-- `operator_backend`
-- later: local `ROS 2 + MoveIt 2`
+- `preview_bridge`
+- local `ROS 2 + MoveIt 2`
 
 ### Robot computer
 
-- `robot_gateway`
 - `robot_bridge`
-- manipulator controllers
-- rover-side services
+- remote `MoveIt 2 / execution layer`
+- `ros2_control`
+- manipulator and gripper hardware
 
 ## Data Flow
 
@@ -68,11 +66,17 @@ Not included yet:
 
 ### Target architecture
 
-`UI -> operator_backend -> robot_gateway -> robot_bridge -> robot`
+`robot_bridge -> UI -> preview_bridge`
 
-and
+for current real state synchronization, and
 
-`robot -> robot_bridge -> robot_gateway -> operator_backend -> UI`
+`UI -> preview_bridge`
+
+for preview and validation, and
+
+`UI -> robot_bridge -> robot`
+
+for confirmed execution.
 
 ## Safety Model
 
@@ -89,7 +93,7 @@ The UI always distinguishes:
 
 1. current real state
 2. preview target
-3. locked target
+3. validated target
 4. execution state
 
-Even in Iteration 1, these concepts are preserved in mock form so that later backend integration does not require redesigning the UI model.
+Only validated targets may be sent to `robot_bridge` for real execution.
