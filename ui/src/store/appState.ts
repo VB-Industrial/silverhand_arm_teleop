@@ -1,4 +1,5 @@
 import { computed, signal } from "@preact/signals";
+import { createPreviewController, type JointVector, type TcpPose } from "../kinematics";
 
 export type AppTopLevelState =
   | "idle"
@@ -32,9 +33,10 @@ type TargetBundle = {
   gripper: number;
 };
 
-const DEFAULT_JOINTS = [12, 34, 18, -22, 56, -10];
-const DEFAULT_TCP = [0.12, -0.03, 0.41, 12, -8, 21];
+const DEFAULT_JOINTS = [0, 0, 0, 0, 0, 0];
+const DEFAULT_TCP = [0, 0, 0, 0, 0, 0];
 const DEFAULT_GRIPPER = 55;
+const previewController = createPreviewController();
 
 function cloneTarget(bundle: TargetBundle): TargetBundle {
   return {
@@ -129,9 +131,7 @@ export function updateTcp(index: number, value: number): void {
   interactionMode.value = "planner_tcp";
   const next = cloneTarget(previewTarget.value);
   next.tcp[index] = value;
-  previewTarget.value = next;
-  lockedTarget.value = cloneTarget(next);
-  appState.value = "target_locked";
+  applyTcpPreview(next);
 }
 
 export function updateTcpPositionFromGizmo(position: [number, number, number]): void {
@@ -146,9 +146,7 @@ export function updateTcpPositionFromGizmo(position: [number, number, number]): 
   next.tcp[0] = position[0];
   next.tcp[1] = position[1];
   next.tcp[2] = position[2];
-  previewTarget.value = next;
-  lockedTarget.value = cloneTarget(next);
-  appState.value = "target_locked";
+  applyTcpPreview(next);
 }
 
 export function updateTcpOrientationFromGizmo(orientation: [number, number, number]): void {
@@ -163,9 +161,30 @@ export function updateTcpOrientationFromGizmo(orientation: [number, number, numb
   next.tcp[3] = orientation[0];
   next.tcp[4] = orientation[1];
   next.tcp[5] = orientation[2];
-  previewTarget.value = next;
-  lockedTarget.value = cloneTarget(next);
-  appState.value = "target_locked";
+  applyTcpPreview(next);
+}
+
+export function syncTcpPoseFromModel(
+  position: [number, number, number],
+  orientation: [number, number, number],
+): void {
+  const nextReal = cloneTarget(realTarget.value);
+  nextReal.tcp[0] = position[0];
+  nextReal.tcp[1] = position[1];
+  nextReal.tcp[2] = position[2];
+  nextReal.tcp[3] = orientation[0];
+  nextReal.tcp[4] = orientation[1];
+  nextReal.tcp[5] = orientation[2];
+  realTarget.value = nextReal;
+
+  const nextPreview = cloneTarget(previewTarget.value);
+  nextPreview.tcp[0] = position[0];
+  nextPreview.tcp[1] = position[1];
+  nextPreview.tcp[2] = position[2];
+  nextPreview.tcp[3] = orientation[0];
+  nextPreview.tcp[4] = orientation[1];
+  nextPreview.tcp[5] = orientation[2];
+  previewTarget.value = nextPreview;
 }
 
 export function updateGripper(value: number): void {
@@ -258,6 +277,41 @@ export function resetEstop(): void {
     ...safetyState.value,
     controlActive: true,
   };
+}
+
+function applyTcpPreview(next: TargetBundle): void {
+  const result = previewController.computePosePreview(toTcpPose(next), asJointVector(previewTarget.value.joints));
+
+  if (result.previewJointsDeg) {
+    next.joints = [...result.previewJointsDeg];
+    previewTarget.value = next;
+    lockedTarget.value = cloneTarget(next);
+    appState.value = "target_locked";
+    return;
+  }
+
+  previewTarget.value = next;
+  lockedTarget.value = null;
+  appState.value = "preview";
+}
+
+function toTcpPose(bundle: TargetBundle): TcpPose {
+  return {
+    position: {
+      x: bundle.tcp[0],
+      y: bundle.tcp[1],
+      z: bundle.tcp[2],
+    },
+    orientation: {
+      roll: bundle.tcp[3],
+      pitch: bundle.tcp[4],
+      yaw: bundle.tcp[5],
+    },
+  };
+}
+
+function asJointVector(values: number[]): JointVector {
+  return [values[0], values[1], values[2], values[3], values[4], values[5]];
 }
 
 export function setFault(active: boolean): void {

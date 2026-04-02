@@ -7,6 +7,7 @@ import {
   realTarget,
   setControlMode,
   setInteractionMode,
+  syncTcpPoseFromModel,
   updateTcpOrientationFromGizmo,
   updateTcpPositionFromGizmo,
 } from "../store/appState";
@@ -46,6 +47,7 @@ export function KinematicViewportPanel() {
           targetTcp={[previewTarget.value.tcp[0], previewTarget.value.tcp[1], previewTarget.value.tcp[2]]}
           targetOrientation={[previewTarget.value.tcp[3], previewTarget.value.tcp[4], previewTarget.value.tcp[5]]}
           onTcpPositionChange={setTcpPosition}
+          onInitialTargetSync={syncTcpPoseFromModel}
           onTargetOrientationChange={updateTcpOrientationFromGizmo}
           onTargetTcpChange={updateTcpPositionFromGizmo}
         />

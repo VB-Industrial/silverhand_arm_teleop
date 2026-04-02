@@ -3,11 +3,16 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import URDFLoader from "urdf-loader";
+import {
+  absoluteToRelativeTcpOrientationDeg,
+  PAPER_DH_GEOMETRY_METERS,
+  relativeToAbsoluteTcpOrientationDeg,
+} from "../kinematics";
 
 const JOINT_NAMES = ["arm_joint_1", "arm_joint_2", "arm_joint_3", "arm_joint_4", "arm_joint_5", "arm_joint_6"];
 const HAND_JOINT_NAMES = ["hand_left_finger_joint", "hand_right_finger_joint"];
 const HAND_MAX_OPENING = 0.01;
-const TOOL_OFFSET = new THREE.Vector3(0, 0, 0.105);
+const TOOL_OFFSET = new THREE.Vector3(0, 0, PAPER_DH_GEOMETRY_METERS.d6);
 
 type KinematicSceneProps = {
   realJoints: number[];
@@ -16,6 +21,7 @@ type KinematicSceneProps = {
   targetOrientation: [number, number, number];
   gripperPercent: number;
   onTcpPositionChange?: (positions: { real: [number, number, number]; target: [number, number, number] }) => void;
+  onInitialTargetSync?: (position: [number, number, number], orientation: [number, number, number]) => void;
   onTargetOrientationChange?: (orientation: [number, number, number]) => void;
   onTargetTcpChange?: (position: [number, number, number]) => void;
 };
@@ -24,6 +30,7 @@ type LoadedSceneRefs = {
   realSystem: any | null;
   targetSystem: any | null;
   robotRoot: THREE.Group | null;
+  armBase: THREE.Object3D | null;
   realTool: THREE.Object3D | null;
   targetTool: THREE.Object3D | null;
   gizmoAnchor: THREE.Object3D | null;
@@ -37,6 +44,7 @@ export function KinematicScene(props: KinematicSceneProps) {
     realSystem: null,
     targetSystem: null,
     robotRoot: null,
+    armBase: null,
     realTool: null,
     targetTool: null,
     gizmoAnchor: null,
@@ -147,11 +155,11 @@ export function KinematicScene(props: KinematicSceneProps) {
     });
 
     translateTransform.addEventListener("objectChange", () => {
-      if (syncingGizmoRef.current || !sceneRefs.current.robotRoot || !props.onTargetTcpChange) {
+      if (syncingGizmoRef.current || !sceneRefs.current.armBase || !props.onTargetTcpChange) {
         return;
       }
 
-      const local = sceneRefs.current.robotRoot.worldToLocal(gizmoAnchor.position.clone());
+      const local = sceneRefs.current.armBase.worldToLocal(gizmoAnchor.position.clone());
       const next: [number, number, number] = [
         roundToMillimeters(local.x),
         roundToMillimeters(local.y),
@@ -164,11 +172,11 @@ export function KinematicScene(props: KinematicSceneProps) {
     });
 
     rotateTransform.addEventListener("objectChange", () => {
-      if (syncingGizmoRef.current || !sceneRefs.current.robotRoot || !props.onTargetOrientationChange) {
+      if (syncingGizmoRef.current || !sceneRefs.current.armBase || !props.onTargetOrientationChange) {
         return;
       }
 
-      const orientation = tcpOrientationFromWorld(sceneRefs.current.robotRoot, gizmoAnchor.quaternion);
+      const orientation = tcpOrientationFromWorld(sceneRefs.current.armBase, gizmoAnchor.quaternion);
       if (!orientationArraysEqual(orientation, props.targetOrientation)) {
         props.onTargetOrientationChange(orientation);
       }
@@ -270,11 +278,11 @@ export function KinematicScene(props: KinematicSceneProps) {
     };
 
     const emitTargetTcpFromAnchor = () => {
-      if (syncingGizmoRef.current || !sceneRefs.current.robotRoot || !props.onTargetTcpChange) {
+      if (syncingGizmoRef.current || !sceneRefs.current.armBase || !props.onTargetTcpChange) {
         return;
       }
 
-      const local = sceneRefs.current.robotRoot.worldToLocal(gizmoAnchor.position.clone());
+      const local = sceneRefs.current.armBase.worldToLocal(gizmoAnchor.position.clone());
       const next: [number, number, number] = [
         roundToMillimeters(local.x),
         roundToMillimeters(local.y),
@@ -407,6 +415,7 @@ export function KinematicScene(props: KinematicSceneProps) {
         const realTcp = createTcpMarker(0x9ae476, 0.95, 1);
         const targetTcp = createTcpMarker(0x6bc7ff, 0.72, 1.08);
 
+        const armBase = realSystem.getObjectByName("arm_base_link") ?? targetSystem.getObjectByName("arm_base_link");
         const realTool = realSystem.getObjectByName("hand_gripper_link") ?? realSystem.getObjectByName("arm_link_6");
         const targetTool = targetSystem.getObjectByName("hand_gripper_link") ?? targetSystem.getObjectByName("arm_link_6");
         realTool?.add(realTcp);
@@ -416,6 +425,7 @@ export function KinematicScene(props: KinematicSceneProps) {
           realSystem,
           targetSystem,
           robotRoot,
+          armBase,
           realTool,
           targetTool,
           gizmoAnchor,
@@ -429,6 +439,7 @@ export function KinematicScene(props: KinematicSceneProps) {
           sceneRefs.current,
           props.targetTcp,
           props.targetOrientation,
+          props.onInitialTargetSync,
           props.onTargetTcpChange,
           props.onTargetOrientationChange,
           syncingGizmoRef,
@@ -491,13 +502,13 @@ export function KinematicScene(props: KinematicSceneProps) {
   }, [props.realJoints, props.targetJoints, props.gripperPercent]);
 
   useEffect(() => {
-    if (!sceneRefs.current.gizmoAnchor || !sceneRefs.current.robotRoot || draggingRef.current || sphereDraggingRef.current) {
+    if (!sceneRefs.current.gizmoAnchor || !sceneRefs.current.armBase || draggingRef.current || sphereDraggingRef.current) {
       return;
     }
 
     setGizmoAnchorPose(
       sceneRefs.current.gizmoAnchor,
-      sceneRefs.current.robotRoot,
+      sceneRefs.current.armBase,
       props.targetTcp,
       props.targetOrientation,
       sceneRefs.current.targetTool,
@@ -644,7 +655,7 @@ function emitTcpPositions(
   refs: LoadedSceneRefs,
   onTcpPositionChange: KinematicSceneProps["onTcpPositionChange"],
 ) {
-  if (!refs.robotRoot || !refs.realTool || !onTcpPositionChange) {
+  if (!refs.armBase || !refs.realTool || !onTcpPositionChange) {
     return;
   }
 
@@ -652,16 +663,16 @@ function emitTcpPositions(
     return;
   }
 
-  refs.robotRoot.updateWorldMatrix(true, true);
+  refs.armBase.updateWorldMatrix(true, true);
 
-  const real = tcpPositionInRobotFrame(refs.robotRoot, refs.realTool);
-  const target = tcpPositionFromWorld(refs.robotRoot, refs.gizmoAnchor.position);
+  const real = tcpPositionInReferenceFrame(refs.armBase, refs.realTool);
+  const target = tcpPositionFromWorld(refs.armBase, refs.gizmoAnchor.position);
   onTcpPositionChange({ real, target });
 }
 
-function tcpPositionInRobotFrame(root: THREE.Object3D, tool: THREE.Object3D): [number, number, number] {
+function tcpPositionInReferenceFrame(reference: THREE.Object3D, tool: THREE.Object3D): [number, number, number] {
   const world = tool.localToWorld(TOOL_OFFSET.clone());
-  const local = root.worldToLocal(world.clone());
+  const local = reference.worldToLocal(world.clone());
   return [local.x, local.y, local.z];
 }
 
@@ -679,19 +690,19 @@ function applyDefaultView(camera: THREE.PerspectiveCamera, controls: OrbitContro
 
 function setGizmoAnchorPose(
   anchor: THREE.Object3D,
-  robotRoot: THREE.Object3D,
+  referenceFrame: THREE.Object3D,
   targetTcp: [number, number, number],
   targetOrientation: [number, number, number],
   targetTool: THREE.Object3D | null,
   syncingRef: { current: boolean },
 ) {
-  const world = robotRoot.localToWorld(new THREE.Vector3(targetTcp[0], targetTcp[1], targetTcp[2]));
+  const world = referenceFrame.localToWorld(new THREE.Vector3(targetTcp[0], targetTcp[1], targetTcp[2]));
   syncingRef.current = true;
   anchor.position.copy(world);
   if (targetTool) {
     targetTool.updateWorldMatrix(true, true);
   }
-  setAnchorOrientation(anchor, robotRoot, targetOrientation, targetTool);
+  setAnchorOrientation(anchor, referenceFrame, targetOrientation, targetTool);
   queueMicrotask(() => {
     syncingRef.current = false;
   });
@@ -856,7 +867,7 @@ function orientationArraysEqual(a: [number, number, number], b: [number, number,
 
 function setAnchorOrientation(
   anchor: THREE.Object3D,
-  robotRoot: THREE.Object3D,
+  referenceFrame: THREE.Object3D,
   targetOrientation: [number, number, number],
   targetTool: THREE.Object3D | null,
 ) {
@@ -869,12 +880,12 @@ function setAnchorOrientation(
   }
 
   const rootQuaternion = new THREE.Quaternion();
-  robotRoot.getWorldQuaternion(rootQuaternion);
+  referenceFrame.getWorldQuaternion(rootQuaternion);
   const localQuaternion = new THREE.Quaternion().setFromEuler(
     new THREE.Euler(
-      THREE.MathUtils.degToRad(targetOrientation[0]),
-      THREE.MathUtils.degToRad(targetOrientation[1]),
-      THREE.MathUtils.degToRad(targetOrientation[2]),
+      THREE.MathUtils.degToRad(relativeToAbsoluteTcpOrientationDeg(targetOrientation)[0]),
+      THREE.MathUtils.degToRad(relativeToAbsoluteTcpOrientationDeg(targetOrientation)[1]),
+      THREE.MathUtils.degToRad(relativeToAbsoluteTcpOrientationDeg(targetOrientation)[2]),
       "XYZ",
     ),
   );
@@ -886,11 +897,11 @@ function tcpOrientationFromWorld(root: THREE.Object3D, worldQuaternion: THREE.Qu
   root.getWorldQuaternion(rootQuaternion);
   const localQuaternion = rootQuaternion.invert().multiply(worldQuaternion.clone());
   const euler = new THREE.Euler().setFromQuaternion(localQuaternion, "XYZ");
-  return [
+  return absoluteToRelativeTcpOrientationDeg([
     roundToTenth(THREE.MathUtils.radToDeg(euler.x)),
     roundToTenth(THREE.MathUtils.radToDeg(euler.y)),
     roundToTenth(THREE.MathUtils.radToDeg(euler.z)),
-  ];
+  ]);
 }
 
 function roundToTenth(value: number) {
@@ -901,31 +912,36 @@ function initializeGizmoFromTool(
   refs: LoadedSceneRefs,
   targetTcp: [number, number, number],
   targetOrientation: [number, number, number],
+  onInitialTargetSync: KinematicSceneProps["onInitialTargetSync"],
   onTargetTcpChange: KinematicSceneProps["onTargetTcpChange"],
   onTargetOrientationChange: KinematicSceneProps["onTargetOrientationChange"],
   syncingRef: { current: boolean },
   initializedRef: { current: boolean },
 ) {
-  if (initializedRef.current || !refs.robotRoot || !refs.targetTool || !refs.gizmoAnchor) {
+  if (initializedRef.current || !refs.armBase || !refs.targetTool || !refs.gizmoAnchor) {
     return;
   }
 
-  refs.robotRoot.updateWorldMatrix(true, true);
+  refs.armBase.updateWorldMatrix(true, true);
   refs.targetTool.updateWorldMatrix(true, true);
 
-  const toolPosition = tcpPositionInRobotFrame(refs.robotRoot, refs.targetTool);
+  const toolPosition = tcpPositionInReferenceFrame(refs.armBase, refs.targetTool);
   const toolQuaternion = new THREE.Quaternion();
   refs.targetTool.getWorldQuaternion(toolQuaternion);
-  const toolOrientation = tcpOrientationFromWorld(refs.robotRoot, toolQuaternion);
+  const toolOrientation = tcpOrientationFromWorld(refs.armBase, toolQuaternion);
 
-  if (!tcpArraysEqual(toolPosition, targetTcp) && onTargetTcpChange) {
-    onTargetTcpChange(toolPosition);
+  if (onInitialTargetSync) {
+    onInitialTargetSync(toolPosition, toolOrientation);
+  } else {
+    if (!tcpArraysEqual(toolPosition, targetTcp) && onTargetTcpChange) {
+      onTargetTcpChange(toolPosition);
+    }
+
+    if (!orientationArraysEqual(toolOrientation, targetOrientation) && onTargetOrientationChange) {
+      onTargetOrientationChange(toolOrientation);
+    }
   }
 
-  if (!orientationArraysEqual(toolOrientation, targetOrientation) && onTargetOrientationChange) {
-    onTargetOrientationChange(toolOrientation);
-  }
-
-  setGizmoAnchorPose(refs.gizmoAnchor, refs.robotRoot, toolPosition, toolOrientation, refs.targetTool, syncingRef);
+  setGizmoAnchorPose(refs.gizmoAnchor, refs.armBase, toolPosition, toolOrientation, refs.targetTool, syncingRef);
   initializedRef.current = true;
 }
