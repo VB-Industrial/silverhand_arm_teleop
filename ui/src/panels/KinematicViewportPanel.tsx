@@ -6,7 +6,6 @@ import {
   previewTarget,
   realTarget,
   setControlMode,
-  setInteractionMode,
   syncTcpPoseFromModel,
   updateTcpOrientationFromGizmo,
   updateTcpPositionFromGizmo,
@@ -36,7 +35,6 @@ export function KinematicViewportPanel() {
       className={interactionMode.value === "planner_gizmo" ? "panel model-panel active-control-panel" : "panel model-panel"}
       onPointerDown={() => {
         setControlMode("tcp");
-        setInteractionMode("planner_gizmo");
       }}
     >
       <div className="model-placeholder">

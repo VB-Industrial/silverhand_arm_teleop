@@ -3,16 +3,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import URDFLoader from "urdf-loader";
-import {
-  absoluteToRelativeTcpOrientationDeg,
-  PAPER_DH_GEOMETRY_METERS,
-  relativeToAbsoluteTcpOrientationDeg,
-} from "../kinematics";
+import { PAPER_DH_GEOMETRY_METERS } from "../kinematics";
 
 const JOINT_NAMES = ["arm_joint_1", "arm_joint_2", "arm_joint_3", "arm_joint_4", "arm_joint_5", "arm_joint_6"];
 const HAND_JOINT_NAMES = ["hand_left_finger_joint", "hand_right_finger_joint"];
 const HAND_MAX_OPENING = 0.01;
-const TOOL_OFFSET = new THREE.Vector3(0, 0, PAPER_DH_GEOMETRY_METERS.d6);
+const HAND_TCP_OFFSET = new THREE.Vector3(0, 0, 0.0642);
+const ARM_LINK6_TCP_OFFSET = new THREE.Vector3(0, 0, PAPER_DH_GEOMETRY_METERS.d6);
 
 type KinematicSceneProps = {
   realJoints: number[];
@@ -33,6 +30,10 @@ type LoadedSceneRefs = {
   armBase: THREE.Object3D | null;
   realTool: THREE.Object3D | null;
   targetTool: THREE.Object3D | null;
+  realLeftFinger: THREE.Object3D | null;
+  realRightFinger: THREE.Object3D | null;
+  targetLeftFinger: THREE.Object3D | null;
+  targetRightFinger: THREE.Object3D | null;
   gizmoAnchor: THREE.Object3D | null;
 };
 
@@ -47,6 +48,10 @@ export function KinematicScene(props: KinematicSceneProps) {
     armBase: null,
     realTool: null,
     targetTool: null,
+    realLeftFinger: null,
+    realRightFinger: null,
+    targetLeftFinger: null,
+    targetRightFinger: null,
     gizmoAnchor: null,
   });
   const translateTransformRef = useRef<TransformControls | null>(null);
@@ -412,12 +417,25 @@ export function KinematicScene(props: KinematicSceneProps) {
         robotRoot.add(realSystem);
         robotRoot.add(targetSystem);
 
-        const realTcp = createTcpMarker(0x9ae476, 0.95, 1);
-        const targetTcp = createTcpMarker(0x6bc7ff, 0.72, 1.08);
-
         const armBase = realSystem.getObjectByName("arm_base_link") ?? targetSystem.getObjectByName("arm_base_link");
         const realTool = realSystem.getObjectByName("hand_gripper_link") ?? realSystem.getObjectByName("arm_link_6");
         const targetTool = targetSystem.getObjectByName("hand_gripper_link") ?? targetSystem.getObjectByName("arm_link_6");
+        const realLeftFinger = realSystem.getObjectByName("hand_left_finger");
+        const realRightFinger = realSystem.getObjectByName("hand_right_finger");
+        const targetLeftFinger = targetSystem.getObjectByName("hand_left_finger");
+        const targetRightFinger = targetSystem.getObjectByName("hand_right_finger");
+        const realTcp = createTcpMarker(
+          getTcpLocalOffset(realTool, realLeftFinger, realRightFinger),
+          0x9ae476,
+          0.95,
+          1,
+        );
+        const targetTcp = createTcpMarker(
+          getTcpLocalOffset(targetTool, targetLeftFinger, targetRightFinger),
+          0x6bc7ff,
+          0.72,
+          1.08,
+        );
         realTool?.add(realTcp);
         targetTool?.add(targetTcp);
 
@@ -428,6 +446,10 @@ export function KinematicScene(props: KinematicSceneProps) {
           armBase,
           realTool,
           targetTool,
+          realLeftFinger,
+          realRightFinger,
+          targetLeftFinger,
+          targetRightFinger,
           gizmoAnchor,
         };
 
@@ -506,11 +528,28 @@ export function KinematicScene(props: KinematicSceneProps) {
       return;
     }
 
+    const anchorTcp =
+      sceneRefs.current.targetTool && sceneRefs.current.armBase
+        ? tcpPositionInReferenceFrame(
+            sceneRefs.current.armBase,
+            sceneRefs.current.targetTool,
+            sceneRefs.current.targetLeftFinger,
+            sceneRefs.current.targetRightFinger,
+          )
+        : props.targetTcp;
+    const anchorOrientation =
+      sceneRefs.current.targetTool && sceneRefs.current.armBase
+        ? tcpOrientationFromWorld(
+            sceneRefs.current.armBase,
+            sceneRefs.current.targetTool.getWorldQuaternion(new THREE.Quaternion()),
+          )
+        : props.targetOrientation;
+
     setGizmoAnchorPose(
       sceneRefs.current.gizmoAnchor,
       sceneRefs.current.armBase,
-      props.targetTcp,
-      props.targetOrientation,
+      anchorTcp,
+      anchorOrientation,
       sceneRefs.current.targetTool,
       syncingGizmoRef,
     );
@@ -592,10 +631,10 @@ function hasManipulatorAncestor(object: THREE.Object3D | null): boolean {
   return false;
 }
 
-function createTcpMarker(color: number, opacity: number, scale: number) {
+function createTcpMarker(offset: THREE.Vector3, color: number, opacity: number, scale: number) {
   const group = new THREE.Group();
   group.name = "tcp_marker";
-  group.position.copy(TOOL_OFFSET);
+  group.position.copy(offset);
   group.scale.setScalar(scale);
 
   const coreMaterial = new THREE.MeshStandardMaterial({
@@ -665,13 +704,18 @@ function emitTcpPositions(
 
   refs.armBase.updateWorldMatrix(true, true);
 
-  const real = tcpPositionInReferenceFrame(refs.armBase, refs.realTool);
+  const real = tcpPositionInReferenceFrame(refs.armBase, refs.realTool, refs.realLeftFinger, refs.realRightFinger);
   const target = tcpPositionFromWorld(refs.armBase, refs.gizmoAnchor.position);
   onTcpPositionChange({ real, target });
 }
 
-function tcpPositionInReferenceFrame(reference: THREE.Object3D, tool: THREE.Object3D): [number, number, number] {
-  const world = tool.localToWorld(TOOL_OFFSET.clone());
+function tcpPositionInReferenceFrame(
+  reference: THREE.Object3D,
+  tool: THREE.Object3D,
+  leftFinger?: THREE.Object3D | null,
+  rightFinger?: THREE.Object3D | null,
+): [number, number, number] {
+  const world = getTcpWorldPosition(tool, leftFinger, rightFinger);
   const local = reference.worldToLocal(world.clone());
   return [local.x, local.y, local.z];
 }
@@ -750,6 +794,47 @@ function createGizmoVisual() {
   group.add(hitTarget);
 
   return group;
+}
+
+function getTcpLocalOffset(
+  tool: THREE.Object3D | null,
+  leftFinger?: THREE.Object3D | null,
+  rightFinger?: THREE.Object3D | null,
+): THREE.Vector3 {
+  if (tool?.name === "hand_gripper_link" && leftFinger && rightFinger) {
+    tool.updateWorldMatrix(true, true);
+    leftFinger.updateWorldMatrix(true, true);
+    rightFinger.updateWorldMatrix(true, true);
+    const midpointWorld = getFingerMidpointWorld(leftFinger, rightFinger);
+    return tool.worldToLocal(midpointWorld);
+  }
+
+  if (tool?.name === "hand_gripper_link") {
+    return HAND_TCP_OFFSET.clone();
+  }
+  return ARM_LINK6_TCP_OFFSET.clone();
+}
+
+function getTcpWorldPosition(
+  tool: THREE.Object3D,
+  leftFinger?: THREE.Object3D | null,
+  rightFinger?: THREE.Object3D | null,
+): THREE.Vector3 {
+  if (tool.name === "hand_gripper_link" && leftFinger && rightFinger) {
+    leftFinger.updateWorldMatrix(true, true);
+    rightFinger.updateWorldMatrix(true, true);
+    return getFingerMidpointWorld(leftFinger, rightFinger);
+  }
+
+  return tool.localToWorld(getTcpLocalOffset(tool, leftFinger, rightFinger));
+}
+
+function getFingerMidpointWorld(leftFinger: THREE.Object3D, rightFinger: THREE.Object3D): THREE.Vector3 {
+  const left = new THREE.Vector3();
+  const right = new THREE.Vector3();
+  leftFinger.getWorldPosition(left);
+  rightFinger.getWorldPosition(right);
+  return left.add(right).multiplyScalar(0.5);
 }
 
 function configureTranslateHelper(transform: TransformControls) {
@@ -883,9 +968,9 @@ function setAnchorOrientation(
   referenceFrame.getWorldQuaternion(rootQuaternion);
   const localQuaternion = new THREE.Quaternion().setFromEuler(
     new THREE.Euler(
-      THREE.MathUtils.degToRad(relativeToAbsoluteTcpOrientationDeg(targetOrientation)[0]),
-      THREE.MathUtils.degToRad(relativeToAbsoluteTcpOrientationDeg(targetOrientation)[1]),
-      THREE.MathUtils.degToRad(relativeToAbsoluteTcpOrientationDeg(targetOrientation)[2]),
+      THREE.MathUtils.degToRad(targetOrientation[0]),
+      THREE.MathUtils.degToRad(targetOrientation[1]),
+      THREE.MathUtils.degToRad(targetOrientation[2]),
       "XYZ",
     ),
   );
@@ -897,11 +982,11 @@ function tcpOrientationFromWorld(root: THREE.Object3D, worldQuaternion: THREE.Qu
   root.getWorldQuaternion(rootQuaternion);
   const localQuaternion = rootQuaternion.invert().multiply(worldQuaternion.clone());
   const euler = new THREE.Euler().setFromQuaternion(localQuaternion, "XYZ");
-  return absoluteToRelativeTcpOrientationDeg([
+  return [
     roundToTenth(THREE.MathUtils.radToDeg(euler.x)),
     roundToTenth(THREE.MathUtils.radToDeg(euler.y)),
     roundToTenth(THREE.MathUtils.radToDeg(euler.z)),
-  ]);
+  ];
 }
 
 function roundToTenth(value: number) {
@@ -925,7 +1010,12 @@ function initializeGizmoFromTool(
   refs.armBase.updateWorldMatrix(true, true);
   refs.targetTool.updateWorldMatrix(true, true);
 
-  const toolPosition = tcpPositionInReferenceFrame(refs.armBase, refs.targetTool);
+  const toolPosition = tcpPositionInReferenceFrame(
+    refs.armBase,
+    refs.targetTool,
+    refs.targetLeftFinger,
+    refs.targetRightFinger,
+  );
   const toolQuaternion = new THREE.Quaternion();
   refs.targetTool.getWorldQuaternion(toolQuaternion);
   const toolOrientation = tcpOrientationFromWorld(refs.armBase, toolQuaternion);

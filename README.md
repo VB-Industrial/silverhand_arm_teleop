@@ -92,16 +92,53 @@ cp /home/r/silver_ws/src/silverhand_ros2/silverhand_arm_description/meshes/* \
 
 ## Run UI
 
-Development server:
+### Development server
+
+Start the local Vite dev server:
 
 ```bash
 cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
 npm run dev -- --host 0.0.0.0 --port 4173
 ```
 
-Production build:
+Then open:
+
+- `http://localhost:4173/`
+- or from another machine on the same network:
+  - `http://<YOUR_HOST_IP>:4173/`
+
+Notes:
+
+- You do not need to rebuild after every edit while the dev server is running.
+- For files like `ui/src/kinematics/analyticIk.ts`, just save and refresh the page.
+
+### Development server on another port
+
+If port `4173` is busy, use another one, for example `4174`:
+
+```bash
+cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
+npm run dev -- --host 0.0.0.0 --port 4174
+```
+
+Then open:
+
+- `http://localhost:4174/`
+- or `http://<YOUR_HOST_IP>:4174/`
+
+### Production build
 
 ```bash
 cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
 npm run build
+```
+
+### Local preview of production build
+
+If you want to preview the built bundle locally:
+
+```bash
+cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
+npm run build
+npm run preview -- --host 0.0.0.0 --port 4173
 ```

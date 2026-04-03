@@ -1,10 +1,4 @@
-import {
-  relativeToAbsoluteTcpOrientationDeg,
-  PAPER_DH_GEOMETRY_METERS,
-  PAPER_TO_URDF_FRAME_CALIBRATION,
-  paperToUrdfJointsDeg,
-  type PaperDhGeometry,
-} from "./armGeometry";
+import { PAPER_DH_GEOMETRY_METERS, type PaperDhGeometry } from "./armGeometry";
 import { selectBestSolution } from "./selectBestSolution";
 import type { AnalyticIkCandidate, AnalyticIkResult, AnalyticIkSolver, JointVector, TcpPose } from "./types";
 
@@ -65,72 +59,60 @@ export function createPaperAnalyticIkSolver(geometry: PaperDhGeometry = PAPER_DH
 }
 
 function solvePaperAnalyticIk(targetPose: TcpPose, geometry: PaperDhGeometry): AnalyticIkCandidate[] {
-  const absoluteOrientationUrdf = relativeToAbsoluteTcpOrientationDeg([
+  const targetRotation = rotationMatrixFromRpyDeg(
     targetPose.orientation.roll,
     targetPose.orientation.pitch,
     targetPose.orientation.yaw,
-  ]);
-  const targetRotationUrdf = rotationMatrixFromRpyDeg(
-    absoluteOrientationUrdf[0],
-    absoluteOrientationUrdf[1],
-    absoluteOrientationUrdf[2],
   );
-  const { position: targetPosition, rotation: targetRotation } = urdfPoseToPaperFrame(
-    {
-      x: targetPose.position.x,
-      y: targetPose.position.y,
-      z: targetPose.position.z,
-    },
-    targetRotationUrdf,
-  );
+  const targetPosition = {
+    x: targetPose.position.x,
+    y: targetPose.position.y,
+    z: targetPose.position.z,
+  };
 
   const toolDirection = [targetRotation[0][2], targetRotation[1][2], targetRotation[2][2]] as const;
-  const wristCenter = {
+  const targetWristCenter = {
     x: targetPosition.x - geometry.d6 * toolDirection[0],
     y: targetPosition.y - geometry.d6 * toolDirection[1],
     z: targetPosition.z - geometry.d6 * toolDirection[2],
   };
 
-  // q1 is determined from the TCP ray projected back by the wrist-5 length
-  // plus the gripper/TCP length. This matches the current manipulator geometry
-  // better than using only the paper's d6 wrist-center shift.
-  const baseHeadingPoint = {
-    x: targetPosition.x - (geometry.d4 + geometry.d6) * toolDirection[0],
-    y: targetPosition.y - (geometry.d4 + geometry.d6) * toolDirection[1],
-    z: targetPosition.z - (geometry.d4 + geometry.d6) * toolDirection[2],
-  };
+  const wristCenterPlanarRadius = Math.hypot(targetWristCenter.x, targetWristCenter.y);
+  const wristCenterHeightFromShoulder = targetWristCenter.z - geometry.d1;
+  const shoulderToWristDistance = Math.hypot(wristCenterPlanarRadius, wristCenterHeightFromShoulder);
+  const elbowToWristLength = Math.hypot(geometry.a3, geometry.d4);
 
-  const c = Math.hypot(wristCenter.x, wristCenter.y);
-  const b = wristCenter.z - geometry.d1;
-  const radial = Math.hypot(c, b);
-  const alpha = Math.atan2(geometry.d4, geometry.a3);
-  const wristTriangle = Math.hypot(geometry.a3, geometry.d4);
-
-  if (radial < EPSILON || wristTriangle < EPSILON) {
+  if (shoulderToWristDistance < EPSILON || elbowToWristLength < EPSILON) {
     return [];
   }
 
   const gammaArg = clampToUnit(
-    (geometry.a2 * geometry.a2 + wristTriangle * wristTriangle - radial * radial) / (2 * geometry.a2 * wristTriangle),
+    (geometry.a2 * geometry.a2 +
+      elbowToWristLength * elbowToWristLength -
+      shoulderToWristDistance * shoulderToWristDistance) /
+      (2 * geometry.a2 * elbowToWristLength),
   );
   const lambdaArg = clampToUnit(
-    (geometry.a2 * geometry.a2 + radial * radial - wristTriangle * wristTriangle) / (2 * geometry.a2 * radial),
+    (geometry.a2 * geometry.a2 +
+      shoulderToWristDistance * shoulderToWristDistance -
+      elbowToWristLength * elbowToWristLength) /
+      (2 * geometry.a2 * shoulderToWristDistance),
   );
 
   if (gammaArg === null || lambdaArg === null) {
     return [];
   }
 
-  const theta1 = Math.PI / 2 + Math.atan2(baseHeadingPoint.y, baseHeadingPoint.x);
-  const mu = Math.atan2(b, c);
-  const gamma = Math.acos(gammaArg);
+  const theta1 = Math.atan2(targetWristCenter.y, targetWristCenter.x);
+  const mu = Math.atan2(wristCenterHeightFromShoulder, wristCenterPlanarRadius);
+  const gamma =  Math.acos(gammaArg);
   const lambda = Math.acos(lambdaArg);
 
   const candidates: AnalyticIkCandidate[] = [];
 
   for (const elbowSign of [1, -1] as const) {
-    const theta2 = Math.PI / 2 + mu - elbowSign * lambda;
-    const theta3 = Math.PI + theta2 - alpha - elbowSign * gamma;
+    const theta2 = Math.PI - (mu + elbowSign * lambda);
+    const theta3 = - elbowSign * gamma; //Math.PI + theta2 - alpha -
 
     const r03 = rotation03(theta1, theta2, theta3, geometry);
     const r36 = multiplyMatrix3(transposeMatrix3(r03), targetRotation);
@@ -147,38 +129,13 @@ function solvePaperAnalyticIk(targetPose: TcpPose, geometry: PaperDhGeometry): A
       ];
 
       candidates.push({
-        jointsDeg: paperToUrdfJointsDeg(jointsRad.map(radToDeg) as JointVector),
+        jointsDeg: jointsRad.map(radToDeg) as JointVector,
         branchId: `elbow_${elbowSign > 0 ? "up" : "down"}_wrist_${index}`,
       });
     });
   }
 
   return dedupeCandidates(candidates);
-}
-
-function urdfPoseToPaperFrame(
-  positionUrdf: { x: number; y: number; z: number },
-  rotationUrdf: Matrix3,
-): { position: { x: number; y: number; z: number }; rotation: Matrix3 } {
-  const calibrationRotation = PAPER_TO_URDF_FRAME_CALIBRATION.rotation;
-  const calibrationTranslation = PAPER_TO_URDF_FRAME_CALIBRATION.translationMeters;
-  const inverseRotation = transposeMatrix3(calibrationRotation);
-  const translated: [number, number, number] = [
-    positionUrdf.x - calibrationTranslation[0],
-    positionUrdf.y - calibrationTranslation[1],
-    positionUrdf.z - calibrationTranslation[2],
-  ];
-  const positionPaper = multiplyMatrix3Vector(inverseRotation, translated);
-  const rotationPaper = multiplyMatrix3(inverseRotation, rotationUrdf);
-
-  return {
-    position: {
-      x: positionPaper[0],
-      y: positionPaper[1],
-      z: positionPaper[2],
-    },
-    rotation: rotationPaper,
-  };
 }
 
 function solveWristOrientation(r36: Matrix3): [number, number, number][] {
@@ -288,14 +245,6 @@ function multiplyMatrix3(left: Matrix3, right: Matrix3): Matrix3 {
       left[2][0] * right[0][1] + left[2][1] * right[1][1] + left[2][2] * right[2][1],
       left[2][0] * right[0][2] + left[2][1] * right[1][2] + left[2][2] * right[2][2],
     ],
-  ];
-}
-
-function multiplyMatrix3Vector(matrix: Matrix3, vector: readonly [number, number, number]): [number, number, number] {
-  return [
-    matrix[0][0] * vector[0] + matrix[0][1] * vector[1] + matrix[0][2] * vector[2],
-    matrix[1][0] * vector[0] + matrix[1][1] * vector[1] + matrix[1][2] * vector[2],
-    matrix[2][0] * vector[0] + matrix[2][1] * vector[1] + matrix[2][2] * vector[2],
   ];
 }
 
