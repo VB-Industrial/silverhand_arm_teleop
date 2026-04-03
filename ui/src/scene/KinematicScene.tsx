@@ -533,7 +533,6 @@ export function KinematicScene(props: KinematicSceneProps) {
       sceneRefs.current.armBase,
       props.targetTcp,
       props.targetOrientation,
-      sceneRefs.current.targetTool,
       syncingGizmoRef,
     );
     emitTcpPositions(sceneRefs.current, props.onTcpPositionChange);
@@ -720,16 +719,12 @@ function setGizmoAnchorPose(
   referenceFrame: THREE.Object3D,
   targetTcp: [number, number, number],
   targetOrientation: [number, number, number],
-  targetTool: THREE.Object3D | null,
   syncingRef: { current: boolean },
 ) {
   const world = referenceFrame.localToWorld(new THREE.Vector3(targetTcp[0], targetTcp[1], targetTcp[2]));
   syncingRef.current = true;
   anchor.position.copy(world);
-  if (targetTool) {
-    targetTool.updateWorldMatrix(true, true);
-  }
-  setAnchorOrientation(anchor, referenceFrame, targetOrientation, targetTool);
+  setAnchorOrientation(anchor, referenceFrame, targetOrientation);
   queueMicrotask(() => {
     syncingRef.current = false;
   });
@@ -937,16 +932,7 @@ function setAnchorOrientation(
   anchor: THREE.Object3D,
   referenceFrame: THREE.Object3D,
   targetOrientation: [number, number, number],
-  targetTool: THREE.Object3D | null,
 ) {
-  const hasExplicitOrientation = targetOrientation.some((value) => Math.abs(value) > 0.0005);
-  if (!hasExplicitOrientation && targetTool) {
-    const worldQuaternion = new THREE.Quaternion();
-    targetTool.getWorldQuaternion(worldQuaternion);
-    anchor.quaternion.copy(worldQuaternion);
-    return;
-  }
-
   const rootQuaternion = new THREE.Quaternion();
   referenceFrame.getWorldQuaternion(rootQuaternion);
   const localQuaternion = new THREE.Quaternion().setFromEuler(
@@ -1015,6 +1001,6 @@ function initializeGizmoFromTool(
     }
   }
 
-  setGizmoAnchorPose(refs.gizmoAnchor, refs.armBase, toolPosition, toolOrientation, refs.targetTool, syncingRef);
+  setGizmoAnchorPose(refs.gizmoAnchor, refs.armBase, toolPosition, toolOrientation, syncingRef);
   initializedRef.current = true;
 }
