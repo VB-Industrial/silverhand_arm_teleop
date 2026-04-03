@@ -528,28 +528,11 @@ export function KinematicScene(props: KinematicSceneProps) {
       return;
     }
 
-    const anchorTcp =
-      sceneRefs.current.targetTool && sceneRefs.current.armBase
-        ? tcpPositionInReferenceFrame(
-            sceneRefs.current.armBase,
-            sceneRefs.current.targetTool,
-            sceneRefs.current.targetLeftFinger,
-            sceneRefs.current.targetRightFinger,
-          )
-        : props.targetTcp;
-    const anchorOrientation =
-      sceneRefs.current.targetTool && sceneRefs.current.armBase
-        ? tcpOrientationFromWorld(
-            sceneRefs.current.armBase,
-            sceneRefs.current.targetTool.getWorldQuaternion(new THREE.Quaternion()),
-          )
-        : props.targetOrientation;
-
     setGizmoAnchorPose(
       sceneRefs.current.gizmoAnchor,
       sceneRefs.current.armBase,
-      anchorTcp,
-      anchorOrientation,
+      props.targetTcp,
+      props.targetOrientation,
       sceneRefs.current.targetTool,
       syncingGizmoRef,
     );
