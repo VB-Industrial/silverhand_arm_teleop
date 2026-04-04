@@ -465,7 +465,6 @@ export function KinematicScene(props: KinematicSceneProps) {
         });
 
         configureTargetRobot(targetSystem);
-        targetSystem.scale.setScalar(1.003);
 
         robotRoot.add(realSystem);
         robotRoot.add(targetSystem);
