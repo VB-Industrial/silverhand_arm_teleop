@@ -756,7 +756,7 @@ function configureTargetRobot(robot: any) {
     const ghostMesh = new THREE.Mesh(
       mesh.geometry,
       new THREE.MeshBasicMaterial({
-        color: 0xb8bec8,
+        color: 0x98caa7,
         transparent: true,
         opacity: 0.38,
         depthWrite: false,
@@ -775,7 +775,7 @@ function configureTargetRobot(robot: any) {
     const outline = new THREE.LineSegments(
       new THREE.EdgesGeometry(mesh.geometry, 25),
       new THREE.LineBasicMaterial({
-        color: 0xcfd5de,
+        color: 0xbfe8c9,
         transparent: true,
         opacity: 0.9,
         depthWrite: false,
