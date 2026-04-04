@@ -26,13 +26,24 @@ export function selectBestSolution(
       candidate,
       maxJointJumpDeg: maxJointJump(candidate.jointsDeg, currentJointsDeg),
       cost: jointDistanceCost(candidate.jointsDeg, currentJointsDeg, weights),
-    }))
+    }));
+
+  const elbowUp = scored
+    .filter((entry) => isElbowUpBranch(entry.candidate))
     .sort((left, right) => left.cost - right.cost);
+  const elbowDown = scored
+    .filter((entry) => !isElbowUpBranch(entry.candidate))
+    .sort((left, right) => left.cost - right.cost);
+  const preferred = elbowUp.length > 0 ? elbowUp : elbowDown;
 
   return {
-    selected: scored[0]?.candidate ?? null,
-    rejected: candidates.filter((candidate) => candidate !== scored[0]?.candidate),
+    selected: preferred[0]?.candidate ?? null,
+    rejected: candidates.filter((candidate) => candidate !== preferred[0]?.candidate),
   };
+}
+
+function isElbowUpBranch(candidate: AnalyticIkCandidate): boolean {
+  return candidate.branchId.startsWith("elbow_up");
 }
 
 function jointDistanceCost(

@@ -89,6 +89,7 @@ export const realTarget = signal<TargetBundle>(defaultTarget());
 export const previewTarget = signal<TargetBundle>(defaultTarget());
 export const lockedTarget = signal<TargetBundle | null>(null);
 export const tcpOrientationRates = signal<[number, number, number]>([0, 0, 0]);
+export const gizmoWristPresetArmed = signal(true);
 
 export const canExecute = computed(
   () =>
@@ -134,6 +135,7 @@ export function updateJoint(index: number, value: number): void {
   if (editingDisabled.value) {
     return;
   }
+  gizmoWristPresetArmed.value = false;
   controlMode.value = "joint";
   interactionMode.value = "planner_joint";
   const next = cloneTarget(previewTarget.value);
@@ -144,17 +146,18 @@ export function updateJoint(index: number, value: number): void {
 }
 
 export function applyFoldedPreset(): void {
-  applyJointPreset(FOLDED_PRESET_JOINTS);
+  applyJointPreset(FOLDED_PRESET_JOINTS, true);
 }
 
 export function applyUnfoldedPreset(): void {
-  applyJointPreset(UNFOLDED_PRESET_JOINTS);
+  applyJointPreset(UNFOLDED_PRESET_JOINTS, false);
 }
 
 export function updateTcp(index: number, value: number): void {
   if (editingDisabled.value) {
     return;
   }
+  gizmoWristPresetArmed.value = false;
   controlMode.value = "tcp";
   interactionMode.value = "planner_tcp";
   const next = cloneTarget(previewTarget.value);
@@ -170,6 +173,7 @@ export function updateTcpPositionFromGizmo(position: [number, number, number]): 
     return;
   }
 
+  gizmoWristPresetArmed.value = false;
   controlMode.value = "tcp";
   interactionMode.value = "planner_gizmo";
 
@@ -185,6 +189,7 @@ export function updateTcpQuaternionFromGizmo(quaternion: OrientationQuaternion):
     return;
   }
 
+  gizmoWristPresetArmed.value = false;
   controlMode.value = "tcp";
   interactionMode.value = "planner_gizmo";
 
@@ -293,6 +298,10 @@ export function resetTcpOrientationRate(index: 3 | 4 | 5): void {
 export function resetAllTcpOrientationRates(): void {
   tcpOrientationRates.value = [0, 0, 0];
   stopOrientationRateLoop();
+}
+
+export function consumeGizmoWristPreset(): void {
+  gizmoWristPresetArmed.value = false;
 }
 
 export function updateGripper(value: number): void {
@@ -406,11 +415,12 @@ function applyTcpPreview(next: TargetBundle): void {
   appState.value = "preview";
 }
 
-function applyJointPreset(joints: JointVector): void {
+function applyJointPreset(joints: JointVector, armGizmoPreset: boolean): void {
   if (editingDisabled.value) {
     return;
   }
 
+  gizmoWristPresetArmed.value = armGizmoPreset;
   controlMode.value = "joint";
   interactionMode.value = "planner_joint";
   const next = cloneTarget(previewTarget.value);

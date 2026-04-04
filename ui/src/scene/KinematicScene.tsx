@@ -8,6 +8,7 @@ import type { OrientationQuaternion } from "../kinematics";
 
 const JOINT_NAMES = ["arm_joint_1", "arm_joint_2", "arm_joint_3", "arm_joint_4", "arm_joint_5", "arm_joint_6"];
 const HAND_JOINT_NAMES = ["hand_left_finger_joint", "hand_right_finger_joint"];
+const GIZMO_GRAB_WRIST_PRESET_DEG: [number, number, number] = [0, 90, 0];
 const HAND_MAX_OPENING = 0.01;
 const HAND_TCP_OFFSET = new THREE.Vector3(0, 0, 0.0642);
 const HAND_GRASP_FORWARD_OFFSET = 0.05;
@@ -18,11 +19,13 @@ type KinematicSceneProps = {
   targetJoints: number[];
   targetTcp: [number, number, number];
   targetQuaternion: OrientationQuaternion;
+  gizmoWristPresetArmed: boolean;
   interactionMode: "idle" | "servo_joystick" | "servo_gripper" | "planner_gizmo" | "planner_joint" | "planner_tcp";
   gripperPercent: number;
   onTcpPositionChange?: (positions: { real: [number, number, number]; target: [number, number, number] }) => void;
   onInitialTargetSync?: (position: [number, number, number], quaternion: OrientationQuaternion) => void;
   onTargetJointPoseSync?: (position: [number, number, number], quaternion: OrientationQuaternion) => void;
+  onConsumeGizmoWristPreset?: () => void;
   onTargetQuaternionChange?: (quaternion: OrientationQuaternion) => void;
   onTargetTcpChange?: (position: [number, number, number]) => void;
 };
@@ -43,6 +46,7 @@ type LoadedSceneRefs = {
 
 export function KinematicScene(props: KinematicSceneProps) {
   const hostRef = useRef<HTMLDivElement>(null);
+  const latestPropsRef = useRef(props);
   const cameraRef = useRef<THREE.PerspectiveCamera | null>(null);
   const controlsRef = useRef<OrbitControls | null>(null);
   const sceneRefs = useRef<LoadedSceneRefs>({
@@ -66,8 +70,11 @@ export function KinematicScene(props: KinematicSceneProps) {
   const activeHoverModeRef = useRef<"translate" | "rotate" | "none">("none");
   const syncingGizmoRef = useRef(false);
   const initializedFromToolRef = useRef(false);
+  const gizmoGrabPresetAppliedRef = useRef(false);
   const [loadState, setLoadState] = useState<"loading" | "ready" | "error">("loading");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  latestPropsRef.current = props;
 
   useEffect(() => {
     const host = hostRef.current;
@@ -147,6 +154,23 @@ export function KinematicScene(props: KinematicSceneProps) {
     configureRotateHelper(rotateTransform);
 
     const updateDragState = (value: boolean) => {
+      const latest = latestPropsRef.current;
+      if (value) {
+        primeGizmoGrabPreset(
+          sceneRefs.current,
+          latest.targetJoints,
+          latest.gripperPercent,
+          latest.gizmoWristPresetArmed,
+          latest.targetQuaternion,
+          latest.onConsumeGizmoWristPreset,
+          latest.onTargetQuaternionChange,
+          syncingGizmoRef,
+        );
+        gizmoGrabPresetAppliedRef.current = true;
+      } else {
+        gizmoGrabPresetAppliedRef.current = false;
+      }
+
       draggingRef.current = value;
       controls.enabled = !value;
       if (!value && !sphereDraggingRef.current) {
@@ -164,7 +188,8 @@ export function KinematicScene(props: KinematicSceneProps) {
     });
 
     translateTransform.addEventListener("objectChange", () => {
-      if (syncingGizmoRef.current || !sceneRefs.current.armBase || !props.onTargetTcpChange) {
+      const latest = latestPropsRef.current;
+      if (syncingGizmoRef.current || !sceneRefs.current.armBase || !latest.onTargetTcpChange) {
         return;
       }
 
@@ -175,19 +200,20 @@ export function KinematicScene(props: KinematicSceneProps) {
         roundToMillimeters(local.z),
       ];
 
-      if (!tcpArraysEqual(next, props.targetTcp)) {
-        props.onTargetTcpChange(next);
+      if (!tcpArraysEqual(next, latest.targetTcp)) {
+        latest.onTargetTcpChange(next);
       }
     });
 
     rotateTransform.addEventListener("objectChange", () => {
-      if (syncingGizmoRef.current || !sceneRefs.current.armBase || !props.onTargetQuaternionChange) {
+      const latest = latestPropsRef.current;
+      if (syncingGizmoRef.current || !sceneRefs.current.armBase || !latest.onTargetQuaternionChange) {
         return;
       }
 
       const orientation = tcpQuaternionFromWorld(sceneRefs.current.armBase, gizmoAnchor.quaternion);
-      if (!quaternionArraysEqual(orientation, props.targetQuaternion)) {
-        props.onTargetQuaternionChange(orientation);
+      if (!quaternionArraysEqual(orientation, latest.targetQuaternion)) {
+        latest.onTargetQuaternionChange(orientation);
       }
     });
 
@@ -266,8 +292,12 @@ export function KinematicScene(props: KinematicSceneProps) {
     const resolveHoveredHandle = () => {
       pruneHelpers();
       raycaster.setFromCamera(pointer, camera);
-      const translateHit = raycaster.intersectObjects(translateHelper.children, true)[0];
-      const rotateHit = raycaster.intersectObjects(rotateHelper.children, true)[0];
+
+      const translatePicker = (translateTransform as unknown as { _gizmo?: { picker?: Record<string, THREE.Object3D> } })._gizmo?.picker?.translate;
+      const rotatePicker = (rotateTransform as unknown as { _gizmo?: { picker?: Record<string, THREE.Object3D> } })._gizmo?.picker?.rotate;
+
+      const translateHit = translatePicker ? intersectPickerAxis(raycaster, translatePicker, ["X", "Y", "Z"]) : null;
+      const rotateHit = rotatePicker ? intersectPickerAxis(raycaster, rotatePicker, ["X", "Y", "Z"]) : null;
 
       if (translateHit && rotateHit) {
         return translateHit.distance <= rotateHit.distance ? "translate" : "rotate";
@@ -287,7 +317,8 @@ export function KinematicScene(props: KinematicSceneProps) {
     };
 
     const emitTargetTcpFromAnchor = () => {
-      if (syncingGizmoRef.current || !sceneRefs.current.armBase || !props.onTargetTcpChange) {
+      const latest = latestPropsRef.current;
+      if (syncingGizmoRef.current || !sceneRefs.current.armBase || !latest.onTargetTcpChange) {
         return;
       }
 
@@ -298,8 +329,8 @@ export function KinematicScene(props: KinematicSceneProps) {
         roundToMillimeters(local.z),
       ];
 
-      if (!tcpArraysEqual(next, props.targetTcp)) {
-        props.onTargetTcpChange(next);
+      if (!tcpArraysEqual(next, latest.targetTcp)) {
+        latest.onTargetTcpChange(next);
       }
     };
 
@@ -311,6 +342,21 @@ export function KinematicScene(props: KinematicSceneProps) {
       updatePointer(event);
       if (!isSphereHovered()) {
         return;
+      }
+
+      const latest = latestPropsRef.current;
+      if (!gizmoGrabPresetAppliedRef.current) {
+        primeGizmoGrabPreset(
+          sceneRefs.current,
+          latest.targetJoints,
+          latest.gripperPercent,
+          latest.gizmoWristPresetArmed,
+          latest.targetQuaternion,
+          latest.onConsumeGizmoWristPreset,
+          latest.onTargetQuaternionChange,
+          syncingGizmoRef,
+        );
+        gizmoGrabPresetAppliedRef.current = true;
       }
 
       const cameraDirection = new THREE.Vector3();
@@ -348,7 +394,7 @@ export function KinematicScene(props: KinematicSceneProps) {
 
       gizmoAnchor.position.copy(dragIntersection).add(dragOffset);
       emitTargetTcpFromAnchor();
-      emitTcpPositions(sceneRefs.current, props.onTcpPositionChange);
+      emitTcpPositions(sceneRefs.current, latestPropsRef.current.onTcpPositionChange);
     };
 
     const stopSphereDrag = () => {
@@ -358,6 +404,7 @@ export function KinematicScene(props: KinematicSceneProps) {
       }
 
       sphereDraggingRef.current = false;
+      gizmoGrabPresetAppliedRef.current = false;
       controls.enabled = !draggingRef.current;
       setSphereHover(false);
       setActiveControl("none");
@@ -428,21 +475,10 @@ export function KinematicScene(props: KinematicSceneProps) {
         const realRightFinger = realSystem.getObjectByName("hand_right_finger");
         const targetLeftFinger = targetSystem.getObjectByName("hand_left_finger");
         const targetRightFinger = targetSystem.getObjectByName("hand_right_finger");
-        const realTcp = createTcpMarker(
-          getTcpLocalOffset(realTool, realLeftFinger, realRightFinger),
-          0x9ae476,
-          0.95,
-          1,
-        );
-        const targetTcp = createTcpMarker(
-          getTcpLocalOffset(targetTool, targetLeftFinger, targetRightFinger),
-          0x6bc7ff,
-          0.72,
-          1.08,
-        );
-        realTool?.add(realTcp);
-        targetTool?.add(targetTcp);
-
+        const realTcpAxes = createTcpAxes(getTcpLocalOffset(realTool, realLeftFinger, realRightFinger), 0.95, 1);
+        const targetTcpAxes = createTcpAxes(getTcpLocalOffset(targetTool, targetLeftFinger, targetRightFinger), 0.72, 1.08);
+        realTool?.add(realTcpAxes);
+        targetTool?.add(targetTcpAxes);
         sceneRefs.current = {
           realSystem,
           targetSystem,
@@ -472,7 +508,7 @@ export function KinematicScene(props: KinematicSceneProps) {
           initializedFromToolRef,
         );
         targetSystem.visible = !jointArraysEqual(props.realJoints, props.targetJoints);
-        emitTcpPositions(sceneRefs.current, props.onTcpPositionChange);
+        emitTcpPositions(sceneRefs.current, latestPropsRef.current.onTcpPositionChange);
 
         setLoadState("ready");
       })
@@ -524,7 +560,7 @@ export function KinematicScene(props: KinematicSceneProps) {
     applyHandJointValues(sceneRefs.current.realSystem, props.gripperPercent);
     applyHandJointValues(sceneRefs.current.targetSystem, props.gripperPercent);
     sceneRefs.current.targetSystem.visible = !jointArraysEqual(props.realJoints, props.targetJoints);
-    emitTcpPositions(sceneRefs.current, props.onTcpPositionChange);
+    emitTcpPositions(sceneRefs.current, latestPropsRef.current.onTcpPositionChange);
   }, [props.realJoints, props.targetJoints, props.gripperPercent]);
 
   useEffect(() => {
@@ -557,7 +593,7 @@ export function KinematicScene(props: KinematicSceneProps) {
       targetQuaternion,
       syncingGizmoRef,
     );
-    emitTcpPositions(sceneRefs.current, props.onTcpPositionChange);
+    emitTcpPositions(sceneRefs.current, latestPropsRef.current.onTcpPositionChange);
   }, [props.targetJoints, props.gripperPercent, props.interactionMode]);
 
   useEffect(() => {
@@ -578,7 +614,7 @@ export function KinematicScene(props: KinematicSceneProps) {
       props.targetQuaternion,
       syncingGizmoRef,
     );
-    emitTcpPositions(sceneRefs.current, props.onTcpPositionChange);
+    emitTcpPositions(sceneRefs.current, latestPropsRef.current.onTcpPositionChange);
   }, [
     props.targetTcp[0],
     props.targetTcp[1],
@@ -612,6 +648,63 @@ function applyHandJointValues(robot: any, percent: number) {
   HAND_JOINT_NAMES.forEach((jointName) => {
     robot.setJointValue(jointName, opening);
   });
+}
+
+function primeGizmoGrabPreset(
+  refs: LoadedSceneRefs,
+  currentJoints: number[],
+  gripperPercent: number,
+  presetArmed: boolean,
+  currentQuaternion: OrientationQuaternion,
+  onConsumePreset: KinematicSceneProps["onConsumeGizmoWristPreset"],
+  onTargetQuaternionChange: KinematicSceneProps["onTargetQuaternionChange"],
+  syncingRef: { current: boolean },
+) {
+  if (
+    !refs.targetSystem ||
+    !refs.targetTool ||
+    !refs.armBase ||
+    !refs.gizmoAnchor ||
+    !onTargetQuaternionChange ||
+    !presetArmed
+  ) {
+    return;
+  }
+
+  const presetJoints = [
+    currentJoints[0] ?? 0,
+    currentJoints[1] ?? 0,
+    currentJoints[2] ?? 0,
+    GIZMO_GRAB_WRIST_PRESET_DEG[0],
+    GIZMO_GRAB_WRIST_PRESET_DEG[1],
+    GIZMO_GRAB_WRIST_PRESET_DEG[2],
+  ];
+
+  applyArmJointValues(refs.targetSystem, presetJoints);
+  applyHandJointValues(refs.targetSystem, gripperPercent);
+  refs.armBase.updateWorldMatrix(true, true);
+  refs.targetTool.updateWorldMatrix(true, true);
+
+  const toolQuaternion = new THREE.Quaternion();
+  refs.targetTool.getWorldQuaternion(toolQuaternion);
+  const presetQuaternion = tcpQuaternionFromWorld(refs.armBase, toolQuaternion);
+
+  applyArmJointValues(refs.targetSystem, currentJoints);
+  applyHandJointValues(refs.targetSystem, gripperPercent);
+  refs.armBase.updateWorldMatrix(true, true);
+  refs.targetTool.updateWorldMatrix(true, true);
+
+  if (quaternionArraysEqual(presetQuaternion, currentQuaternion)) {
+    return;
+  }
+
+  syncingRef.current = true;
+  setAnchorOrientation(refs.gizmoAnchor, refs.armBase, presetQuaternion);
+  queueMicrotask(() => {
+    syncingRef.current = false;
+  });
+  onConsumePreset?.();
+  onTargetQuaternionChange(presetQuaternion);
 }
 
 function configureTargetRobot(robot: any) {
@@ -657,39 +750,20 @@ function hasManipulatorAncestor(object: THREE.Object3D | null): boolean {
   return false;
 }
 
-function createTcpMarker(offset: THREE.Vector3, color: number, opacity: number, scale: number) {
+function jointArraysEqual(a: number[], b: number[]) {
+  if (a.length !== b.length) {
+    return false;
+  }
+
+  return a.every((value, index) => Math.abs(value - b[index]) < 0.0001);
+}
+
+function createTcpAxes(offset: THREE.Vector3, opacity: number, scale: number) {
   const group = new THREE.Group();
-  group.name = "tcp_marker";
+  group.name = "tcp_axes";
   group.position.copy(offset);
   group.scale.setScalar(scale);
 
-  const coreMaterial = new THREE.MeshStandardMaterial({
-    color,
-    emissive: new THREE.Color(color).multiplyScalar(0.22),
-    transparent: opacity < 1,
-    opacity,
-    roughness: 0.35,
-    metalness: 0.08,
-    depthWrite: opacity >= 1,
-  });
-
-  const ringMaterial = new THREE.MeshStandardMaterial({
-    color,
-    emissive: new THREE.Color(color).multiplyScalar(0.12),
-    transparent: true,
-    opacity: Math.max(0.2, opacity * 0.55),
-    roughness: 0.65,
-    metalness: 0.05,
-    depthWrite: false,
-    side: THREE.DoubleSide,
-  });
-
-  const core = new THREE.Mesh(new THREE.SphereGeometry(0.011, 14, 14), coreMaterial);
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(0.028, 0.0025, 8, 32), ringMaterial);
-  ring.rotation.x = Math.PI / 2;
-
-  group.add(core);
-  group.add(ring);
   group.add(createAxisLine(new THREE.Vector3(0.05, 0, 0), 0xf0645b, opacity));
   group.add(createAxisLine(new THREE.Vector3(0, 0.05, 0), 0x59a7ff, opacity));
   group.add(createAxisLine(new THREE.Vector3(0, 0, 0.05), 0x7fd55c, opacity));
@@ -708,12 +782,18 @@ function createAxisLine(direction: THREE.Vector3, color: number, opacity: number
   return new THREE.Line(geometry, material);
 }
 
-function jointArraysEqual(a: number[], b: number[]) {
-  if (a.length !== b.length) {
-    return false;
+function intersectPickerAxis(
+  raycaster: THREE.Raycaster,
+  root: THREE.Object3D,
+  allowedAxes: string[],
+): THREE.Intersection<THREE.Object3D> | null {
+  const intersections = raycaster.intersectObject(root, true);
+  for (const hit of intersections) {
+    if (allowedAxes.includes(hit.object.name)) {
+      return hit;
+    }
   }
-
-  return a.every((value, index) => Math.abs(value - b[index]) < 0.0001);
+  return null;
 }
 
 function emitTcpPositions(

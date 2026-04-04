@@ -2,6 +2,8 @@ import { useState } from "preact/hooks";
 import { formatNumber } from "../app/viewModel";
 import { KinematicScene } from "../scene/KinematicScene";
 import {
+  consumeGizmoWristPreset,
+  gizmoWristPresetArmed,
   interactionMode,
   previewTarget,
   realTarget,
@@ -45,10 +47,12 @@ export function KinematicViewportPanel() {
           targetJoints={previewTarget.value.joints}
           targetTcp={[previewTarget.value.tcp[0], previewTarget.value.tcp[1], previewTarget.value.tcp[2]]}
           targetQuaternion={previewTarget.value.orientationQuaternion}
+          gizmoWristPresetArmed={gizmoWristPresetArmed.value}
           interactionMode={interactionMode.value}
           onTcpPositionChange={setTcpPosition}
           onInitialTargetSync={syncTcpPoseFromModel}
           onTargetJointPoseSync={syncPreviewTcpPoseFromModel}
+          onConsumeGizmoWristPreset={consumeGizmoWristPreset}
           onTargetQuaternionChange={updateTcpQuaternionFromGizmo}
           onTargetTcpChange={updateTcpPositionFromGizmo}
         />
