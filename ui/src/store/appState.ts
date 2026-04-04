@@ -1,5 +1,16 @@
 import { computed, signal } from "@preact/signals";
-import { createPreviewController, type JointVector, type TcpPose } from "../kinematics";
+import {
+  createPreviewController,
+  eulerDegFromQuaternion,
+  identityQuaternion,
+  multiplyQuaternions,
+  normalizeQuaternion,
+  quaternionFromAngularVelocityDeg,
+  roundEulerDeg,
+  type JointVector,
+  type OrientationQuaternion,
+  type TcpPose,
+} from "../kinematics";
 
 export type AppTopLevelState =
   | "idle"
@@ -30,18 +41,23 @@ export type SafetyState = {
 type TargetBundle = {
   joints: number[];
   tcp: number[];
+  orientationQuaternion: OrientationQuaternion;
   gripper: number;
 };
 
 const DEFAULT_JOINTS = [0, 0, 0, 0, 0, 0];
 const DEFAULT_TCP = [0, 0, 0, 0, 0, 0];
 const DEFAULT_GRIPPER = 55;
+const ORIENTATION_RATE_MAX_DEG_PER_SEC = 90;
 const previewController = createPreviewController();
+let orientationRateAnimationFrame = 0;
+let orientationRateLastTimestamp = 0;
 
 function cloneTarget(bundle: TargetBundle): TargetBundle {
   return {
     joints: [...bundle.joints],
     tcp: [...bundle.tcp],
+    orientationQuaternion: [...bundle.orientationQuaternion] as OrientationQuaternion,
     gripper: bundle.gripper,
   };
 }
@@ -50,6 +66,7 @@ function defaultTarget(): TargetBundle {
   return {
     joints: [...DEFAULT_JOINTS],
     tcp: [...DEFAULT_TCP],
+    orientationQuaternion: identityQuaternion(),
     gripper: DEFAULT_GRIPPER,
   };
 }
@@ -69,6 +86,7 @@ export const safetyState = signal<SafetyState>({
 export const realTarget = signal<TargetBundle>(defaultTarget());
 export const previewTarget = signal<TargetBundle>(defaultTarget());
 export const lockedTarget = signal<TargetBundle | null>(null);
+export const tcpOrientationRates = signal<[number, number, number]>([0, 0, 0]);
 
 export const canExecute = computed(
   () =>
@@ -130,6 +148,9 @@ export function updateTcp(index: number, value: number): void {
   controlMode.value = "tcp";
   interactionMode.value = "planner_tcp";
   const next = cloneTarget(previewTarget.value);
+  if (index >= 3) {
+    return;
+  }
   next.tcp[index] = value;
   applyTcpPreview(next);
 }
@@ -149,7 +170,7 @@ export function updateTcpPositionFromGizmo(position: [number, number, number]): 
   applyTcpPreview(next);
 }
 
-export function updateTcpOrientationFromGizmo(orientation: [number, number, number]): void {
+export function updateTcpQuaternionFromGizmo(quaternion: OrientationQuaternion): void {
   if (editingDisabled.value) {
     return;
   }
@@ -158,33 +179,57 @@ export function updateTcpOrientationFromGizmo(orientation: [number, number, numb
   interactionMode.value = "planner_gizmo";
 
   const next = cloneTarget(previewTarget.value);
-  next.tcp[3] = orientation[0];
-  next.tcp[4] = orientation[1];
-  next.tcp[5] = orientation[2];
+  next.orientationQuaternion = normalizeQuaternion(quaternion);
+  syncEulerReadout(next);
   applyTcpPreview(next);
 }
 
 export function syncTcpPoseFromModel(
   position: [number, number, number],
-  orientation: [number, number, number],
+  quaternion: OrientationQuaternion,
 ): void {
   const nextReal = cloneTarget(realTarget.value);
   nextReal.tcp[0] = position[0];
   nextReal.tcp[1] = position[1];
   nextReal.tcp[2] = position[2];
-  nextReal.tcp[3] = orientation[0];
-  nextReal.tcp[4] = orientation[1];
-  nextReal.tcp[5] = orientation[2];
+  nextReal.orientationQuaternion = normalizeQuaternion(quaternion);
+  syncEulerReadout(nextReal);
   realTarget.value = nextReal;
 
   const nextPreview = cloneTarget(previewTarget.value);
   nextPreview.tcp[0] = position[0];
   nextPreview.tcp[1] = position[1];
   nextPreview.tcp[2] = position[2];
-  nextPreview.tcp[3] = orientation[0];
-  nextPreview.tcp[4] = orientation[1];
-  nextPreview.tcp[5] = orientation[2];
+  nextPreview.orientationQuaternion = normalizeQuaternion(quaternion);
+  syncEulerReadout(nextPreview);
   previewTarget.value = nextPreview;
+}
+
+export function setTcpOrientationRate(index: 3 | 4 | 5, value: number): void {
+  if (editingDisabled.value) {
+    return;
+  }
+
+  controlMode.value = "tcp";
+  interactionMode.value = "planner_tcp";
+  const next = [...tcpOrientationRates.value] as [number, number, number];
+  next[index - 3] = value;
+  tcpOrientationRates.value = next;
+  ensureOrientationRateLoop();
+}
+
+export function resetTcpOrientationRate(index: 3 | 4 | 5): void {
+  const next = [...tcpOrientationRates.value] as [number, number, number];
+  next[index - 3] = 0;
+  tcpOrientationRates.value = next;
+  if (next.every((value) => Math.abs(value) < 0.0001)) {
+    stopOrientationRateLoop();
+  }
+}
+
+export function resetAllTcpOrientationRates(): void {
+  tcpOrientationRates.value = [0, 0, 0];
+  stopOrientationRateLoop();
 }
 
 export function updateGripper(value: number): void {
@@ -251,6 +296,7 @@ export function resetState(): void {
   previewTarget.value = cloneTarget(realTarget.value);
   lockedTarget.value = null;
   interactionMode.value = "idle";
+  resetAllTcpOrientationRates();
   appState.value = "idle";
 }
 
@@ -259,6 +305,7 @@ export function activateEstop(): void {
   previewTarget.value = cloneTarget(realTarget.value);
   lockedTarget.value = null;
   interactionMode.value = "idle";
+  resetAllTcpOrientationRates();
   safetyState.value = {
     ...safetyState.value,
     controlActive: false,
@@ -272,6 +319,7 @@ export function resetEstop(): void {
   previewTarget.value = cloneTarget(realTarget.value);
   lockedTarget.value = null;
   interactionMode.value = "idle";
+  resetAllTcpOrientationRates();
   appState.value = "idle";
   safetyState.value = {
     ...safetyState.value,
@@ -302,11 +350,7 @@ function toTcpPose(bundle: TargetBundle): TcpPose {
       y: bundle.tcp[1],
       z: bundle.tcp[2],
     },
-    orientation: {
-      roll: bundle.tcp[3],
-      pitch: bundle.tcp[4],
-      yaw: bundle.tcp[5],
-    },
+    orientationQuaternion: bundle.orientationQuaternion,
   };
 }
 
@@ -319,6 +363,7 @@ export function setFault(active: boolean): void {
     appState.value = "fault";
     lockedTarget.value = null;
     interactionMode.value = "idle";
+    resetAllTcpOrientationRates();
   } else if (appState.value === "fault") {
     appState.value = "idle";
   }
@@ -327,4 +372,60 @@ export function setFault(active: boolean): void {
     ...safetyState.value,
     noFaults: !active,
   };
+}
+
+function ensureOrientationRateLoop(): void {
+  if (orientationRateAnimationFrame !== 0) {
+    return;
+  }
+
+  orientationRateLastTimestamp = 0;
+  orientationRateAnimationFrame = window.requestAnimationFrame(stepOrientationRateLoop);
+}
+
+function stepOrientationRateLoop(timestamp: number): void {
+  orientationRateAnimationFrame = 0;
+
+  const currentRates = tcpOrientationRates.value;
+  if (currentRates.every((value) => Math.abs(value) < 0.0001)) {
+    orientationRateLastTimestamp = 0;
+    return;
+  }
+
+  const dtSec = orientationRateLastTimestamp === 0 ? 1 / 60 : Math.min(0.05, (timestamp - orientationRateLastTimestamp) / 1000);
+  orientationRateLastTimestamp = timestamp;
+
+  if (!editingDisabled.value) {
+    const angularVelocityDegPerSec: [number, number, number] = [
+      (currentRates[0] / 180) * ORIENTATION_RATE_MAX_DEG_PER_SEC,
+      (currentRates[1] / 180) * ORIENTATION_RATE_MAX_DEG_PER_SEC,
+      (currentRates[2] / 180) * ORIENTATION_RATE_MAX_DEG_PER_SEC,
+    ];
+    const deltaQuaternion = quaternionFromAngularVelocityDeg(angularVelocityDegPerSec, dtSec);
+    const next = cloneTarget(previewTarget.value);
+    next.orientationQuaternion = normalizeQuaternion(multiplyQuaternions(next.orientationQuaternion, deltaQuaternion));
+    syncEulerReadout(next);
+    applyTcpPreview(next);
+  }
+
+  if (tcpOrientationRates.value.some((value) => Math.abs(value) >= 0.0001)) {
+    orientationRateAnimationFrame = window.requestAnimationFrame(stepOrientationRateLoop);
+  } else {
+    stopOrientationRateLoop();
+  }
+}
+
+function stopOrientationRateLoop(): void {
+  if (orientationRateAnimationFrame !== 0) {
+    window.cancelAnimationFrame(orientationRateAnimationFrame);
+    orientationRateAnimationFrame = 0;
+  }
+  orientationRateLastTimestamp = 0;
+}
+
+function syncEulerReadout(bundle: TargetBundle): void {
+  const [roll, pitch, yaw] = roundEulerDeg(eulerDegFromQuaternion(bundle.orientationQuaternion));
+  bundle.tcp[3] = roll;
+  bundle.tcp[4] = pitch;
+  bundle.tcp[5] = yaw;
 }

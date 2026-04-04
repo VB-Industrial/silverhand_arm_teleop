@@ -855,6 +855,51 @@ input[type="range"]::-moz-range-thumb {
   box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
+input[type="range"].velocity-slider::-webkit-slider-runnable-track {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(89, 167, 255, 0.7) 0%,
+      rgba(89, 167, 255, 0.22) 38%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 208, 92, 0.22) 62%,
+      rgba(255, 208, 92, 0.72) 100%
+    );
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 0 14px rgba(0, 0, 0, 0.24);
+}
+
+input[type="range"].velocity-slider::-moz-range-track {
+  background:
+    linear-gradient(
+      90deg,
+      rgba(89, 167, 255, 0.7) 0%,
+      rgba(89, 167, 255, 0.22) 38%,
+      rgba(255, 255, 255, 0.08) 50%,
+      rgba(255, 208, 92, 0.22) 62%,
+      rgba(255, 208, 92, 0.72) 100%
+    );
+  box-shadow:
+    inset 0 0 0 1px rgba(255, 255, 255, 0.04),
+    inset 0 0 14px rgba(0, 0, 0, 0.24);
+}
+
+input[type="range"].velocity-slider::-webkit-slider-thumb {
+  width: 13px;
+  height: 13px;
+  margin-top: -4.5px;
+  background: linear-gradient(180deg, #ffffff 0%, #d7e1ec 100%);
+  border: 1px solid rgba(12, 18, 24, 0.45);
+}
+
+input[type="range"].velocity-slider::-moz-range-thumb {
+  width: 13px;
+  height: 13px;
+  background: linear-gradient(180deg, #ffffff 0%, #d7e1ec 100%);
+  border: 1px solid rgba(12, 18, 24, 0.45);
+}
+
 .gripper-actions,
 .execution-actions {
   display: grid;

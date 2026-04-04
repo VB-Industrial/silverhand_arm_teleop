@@ -1,4 +1,5 @@
 import { PAPER_DH_GEOMETRY_METERS, type PaperDhGeometry } from "./armGeometry";
+import { normalizeQuaternion } from "./quaternion";
 import { selectBestSolution } from "./selectBestSolution";
 import type { AnalyticIkCandidate, AnalyticIkResult, AnalyticIkSolver, JointVector, TcpPose } from "./types";
 
@@ -59,11 +60,7 @@ export function createPaperAnalyticIkSolver(geometry: PaperDhGeometry = PAPER_DH
 }
 
 function solvePaperAnalyticIk(targetPose: TcpPose, geometry: PaperDhGeometry): AnalyticIkCandidate[] {
-  const targetRotation = rotationMatrixFromRpyDeg(
-    targetPose.orientation.roll,
-    targetPose.orientation.pitch,
-    targetPose.orientation.yaw,
-  );
+  const targetRotation = rotationMatrixFromQuaternion(targetPose.orientationQuaternion);
   const targetPosition = {
     x: targetPose.position.x,
     y: targetPose.position.y,
@@ -175,35 +172,26 @@ function rotation03(theta1: number, theta2: number, theta3: number, geometry: Pa
   ];
 }
 
-function rotationMatrixFromRpyDeg(rollDeg: number, pitchDeg: number, yawDeg: number): Matrix3 {
-  const roll = degToRad(rollDeg);
-  const pitch = degToRad(pitchDeg);
-  const yaw = degToRad(yawDeg);
+function rotationMatrixFromQuaternion(quaternion: TcpPose["orientationQuaternion"]): Matrix3 {
+  const [x, y, z, w] = normalizeQuaternion(quaternion);
 
-  const cr = Math.cos(roll);
-  const sr = Math.sin(roll);
-  const cp = Math.cos(pitch);
-  const sp = Math.sin(pitch);
-  const cy = Math.cos(yaw);
-  const sy = Math.sin(yaw);
-
-  const rx: Matrix3 = [
-    [1, 0, 0],
-    [0, cr, -sr],
-    [0, sr, cr],
+  return [
+    [
+      1 - 2 * (y * y + z * z),
+      2 * (x * y - z * w),
+      2 * (x * z + y * w),
+    ],
+    [
+      2 * (x * y + z * w),
+      1 - 2 * (x * x + z * z),
+      2 * (y * z - x * w),
+    ],
+    [
+      2 * (x * z - y * w),
+      2 * (y * z + x * w),
+      1 - 2 * (x * x + y * y),
+    ],
   ];
-  const ry: Matrix3 = [
-    [cp, 0, sp],
-    [0, 1, 0],
-    [-sp, 0, cp],
-  ];
-  const rz: Matrix3 = [
-    [cy, -sy, 0],
-    [sy, cy, 0],
-    [0, 0, 1],
-  ];
-
-  return multiplyMatrix3(multiplyMatrix3(rz, ry), rx);
 }
 
 function transformFromDh(a: number, alpha: number, d: number, theta: number): Matrix4 {
@@ -270,10 +258,6 @@ function dedupeCandidates(candidates: AnalyticIkCandidate[]): AnalyticIkCandidat
     seen.add(key);
     return true;
   });
-}
-
-function degToRad(value: number): number {
-  return (value * Math.PI) / 180;
 }
 
 function radToDeg(value: number): number {

@@ -23,9 +23,11 @@ export type CartesianOrientation = {
   yaw: number;
 };
 
+export type OrientationQuaternion = [number, number, number, number];
+
 export type TcpPose = {
   position: CartesianPosition;
-  orientation: CartesianOrientation;
+  orientationQuaternion: OrientationQuaternion;
 };
 
 export type JointLimit = {
@@ -78,4 +80,3 @@ export type PreviewComputationResult = {
   candidates: AnalyticIkCandidate[];
   validation: PreviewValidation;
 };
-

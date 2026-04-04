@@ -4,6 +4,7 @@ import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
 import { TransformControls } from "three/examples/jsm/controls/TransformControls.js";
 import URDFLoader from "urdf-loader";
 import { PAPER_DH_GEOMETRY_METERS } from "../kinematics";
+import type { OrientationQuaternion } from "../kinematics";
 
 const JOINT_NAMES = ["arm_joint_1", "arm_joint_2", "arm_joint_3", "arm_joint_4", "arm_joint_5", "arm_joint_6"];
 const HAND_JOINT_NAMES = ["hand_left_finger_joint", "hand_right_finger_joint"];
@@ -15,11 +16,11 @@ type KinematicSceneProps = {
   realJoints: number[];
   targetJoints: number[];
   targetTcp: [number, number, number];
-  targetOrientation: [number, number, number];
+  targetQuaternion: OrientationQuaternion;
   gripperPercent: number;
   onTcpPositionChange?: (positions: { real: [number, number, number]; target: [number, number, number] }) => void;
-  onInitialTargetSync?: (position: [number, number, number], orientation: [number, number, number]) => void;
-  onTargetOrientationChange?: (orientation: [number, number, number]) => void;
+  onInitialTargetSync?: (position: [number, number, number], quaternion: OrientationQuaternion) => void;
+  onTargetQuaternionChange?: (quaternion: OrientationQuaternion) => void;
   onTargetTcpChange?: (position: [number, number, number]) => void;
 };
 
@@ -129,7 +130,7 @@ export function KinematicScene(props: KinematicSceneProps) {
     const translateTransform = new TransformControls(camera, renderer.domElement);
     translateTransform.setMode("translate");
     translateTransform.setSpace("world");
-    translateTransform.size = 1.14;
+    translateTransform.size = 1.38;
     translateTransform.enabled = false;
     translateTransform.attach(gizmoAnchor);
     configureTranslateHelper(translateTransform);
@@ -177,13 +178,13 @@ export function KinematicScene(props: KinematicSceneProps) {
     });
 
     rotateTransform.addEventListener("objectChange", () => {
-      if (syncingGizmoRef.current || !sceneRefs.current.armBase || !props.onTargetOrientationChange) {
+      if (syncingGizmoRef.current || !sceneRefs.current.armBase || !props.onTargetQuaternionChange) {
         return;
       }
 
-      const orientation = tcpOrientationFromWorld(sceneRefs.current.armBase, gizmoAnchor.quaternion);
-      if (!orientationArraysEqual(orientation, props.targetOrientation)) {
-        props.onTargetOrientationChange(orientation);
+      const orientation = tcpQuaternionFromWorld(sceneRefs.current.armBase, gizmoAnchor.quaternion);
+      if (!quaternionArraysEqual(orientation, props.targetQuaternion)) {
+        props.onTargetQuaternionChange(orientation);
       }
     });
 
@@ -460,10 +461,10 @@ export function KinematicScene(props: KinematicSceneProps) {
         initializeGizmoFromTool(
           sceneRefs.current,
           props.targetTcp,
-          props.targetOrientation,
+          props.targetQuaternion,
           props.onInitialTargetSync,
           props.onTargetTcpChange,
-          props.onTargetOrientationChange,
+          props.onTargetQuaternionChange,
           syncingGizmoRef,
           initializedFromToolRef,
         );
@@ -532,7 +533,7 @@ export function KinematicScene(props: KinematicSceneProps) {
       sceneRefs.current.gizmoAnchor,
       sceneRefs.current.armBase,
       props.targetTcp,
-      props.targetOrientation,
+      props.targetQuaternion,
       syncingGizmoRef,
     );
     emitTcpPositions(sceneRefs.current, props.onTcpPositionChange);
@@ -540,9 +541,10 @@ export function KinematicScene(props: KinematicSceneProps) {
     props.targetTcp[0],
     props.targetTcp[1],
     props.targetTcp[2],
-    props.targetOrientation[0],
-    props.targetOrientation[1],
-    props.targetOrientation[2],
+    props.targetQuaternion[0],
+    props.targetQuaternion[1],
+    props.targetQuaternion[2],
+    props.targetQuaternion[3],
   ]);
 
   return (
@@ -718,13 +720,13 @@ function setGizmoAnchorPose(
   anchor: THREE.Object3D,
   referenceFrame: THREE.Object3D,
   targetTcp: [number, number, number],
-  targetOrientation: [number, number, number],
+  targetQuaternion: OrientationQuaternion,
   syncingRef: { current: boolean },
 ) {
   const world = referenceFrame.localToWorld(new THREE.Vector3(targetTcp[0], targetTcp[1], targetTcp[2]));
   syncingRef.current = true;
   anchor.position.copy(world);
-  setAnchorOrientation(anchor, referenceFrame, targetOrientation);
+  setAnchorOrientation(anchor, referenceFrame, targetQuaternion);
   queueMicrotask(() => {
     syncingRef.current = false;
   });
@@ -924,51 +926,45 @@ function tcpArraysEqual(a: [number, number, number], b: [number, number, number]
   return a.every((value, index) => Math.abs(value - b[index]) < 0.0005);
 }
 
-function orientationArraysEqual(a: [number, number, number], b: [number, number, number]) {
-  return a.every((value, index) => Math.abs(value - b[index]) < 0.2);
+function quaternionArraysEqual(a: OrientationQuaternion, b: OrientationQuaternion) {
+  return a.every((value, index) => Math.abs(value - b[index]) < 0.0005);
 }
 
 function setAnchorOrientation(
   anchor: THREE.Object3D,
   referenceFrame: THREE.Object3D,
-  targetOrientation: [number, number, number],
+  targetQuaternion: OrientationQuaternion,
 ) {
   const rootQuaternion = new THREE.Quaternion();
   referenceFrame.getWorldQuaternion(rootQuaternion);
-  const localQuaternion = new THREE.Quaternion().setFromEuler(
-    new THREE.Euler(
-      THREE.MathUtils.degToRad(targetOrientation[0]),
-      THREE.MathUtils.degToRad(targetOrientation[1]),
-      THREE.MathUtils.degToRad(targetOrientation[2]),
-      "XYZ",
-    ),
+  const localQuaternion = new THREE.Quaternion(
+    targetQuaternion[0],
+    targetQuaternion[1],
+    targetQuaternion[2],
+    targetQuaternion[3],
   );
   anchor.quaternion.copy(rootQuaternion.multiply(localQuaternion));
 }
 
-function tcpOrientationFromWorld(root: THREE.Object3D, worldQuaternion: THREE.Quaternion): [number, number, number] {
+function tcpQuaternionFromWorld(root: THREE.Object3D, worldQuaternion: THREE.Quaternion): OrientationQuaternion {
   const rootQuaternion = new THREE.Quaternion();
   root.getWorldQuaternion(rootQuaternion);
   const localQuaternion = rootQuaternion.invert().multiply(worldQuaternion.clone());
-  const euler = new THREE.Euler().setFromQuaternion(localQuaternion, "XYZ");
   return [
-    roundToTenth(THREE.MathUtils.radToDeg(euler.x)),
-    roundToTenth(THREE.MathUtils.radToDeg(euler.y)),
-    roundToTenth(THREE.MathUtils.radToDeg(euler.z)),
+    localQuaternion.x,
+    localQuaternion.y,
+    localQuaternion.z,
+    localQuaternion.w,
   ];
-}
-
-function roundToTenth(value: number) {
-  return Math.round(value * 10) / 10;
 }
 
 function initializeGizmoFromTool(
   refs: LoadedSceneRefs,
   targetTcp: [number, number, number],
-  targetOrientation: [number, number, number],
+  targetQuaternion: OrientationQuaternion,
   onInitialTargetSync: KinematicSceneProps["onInitialTargetSync"],
   onTargetTcpChange: KinematicSceneProps["onTargetTcpChange"],
-  onTargetOrientationChange: KinematicSceneProps["onTargetOrientationChange"],
+  onTargetQuaternionChange: KinematicSceneProps["onTargetQuaternionChange"],
   syncingRef: { current: boolean },
   initializedRef: { current: boolean },
 ) {
@@ -987,7 +983,7 @@ function initializeGizmoFromTool(
   );
   const toolQuaternion = new THREE.Quaternion();
   refs.targetTool.getWorldQuaternion(toolQuaternion);
-  const toolOrientation = tcpOrientationFromWorld(refs.armBase, toolQuaternion);
+  const toolOrientation = tcpQuaternionFromWorld(refs.armBase, toolQuaternion);
 
   if (onInitialTargetSync) {
     onInitialTargetSync(toolPosition, toolOrientation);
@@ -996,8 +992,8 @@ function initializeGizmoFromTool(
       onTargetTcpChange(toolPosition);
     }
 
-    if (!orientationArraysEqual(toolOrientation, targetOrientation) && onTargetOrientationChange) {
-      onTargetOrientationChange(toolOrientation);
+    if (!quaternionArraysEqual(toolOrientation, targetQuaternion) && onTargetQuaternionChange) {
+      onTargetQuaternionChange(toolOrientation);
     }
   }
 

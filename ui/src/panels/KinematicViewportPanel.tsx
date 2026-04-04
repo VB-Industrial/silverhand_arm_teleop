@@ -7,7 +7,7 @@ import {
   realTarget,
   setControlMode,
   syncTcpPoseFromModel,
-  updateTcpOrientationFromGizmo,
+  updateTcpQuaternionFromGizmo,
   updateTcpPositionFromGizmo,
 } from "../store/appState";
 
@@ -43,10 +43,10 @@ export function KinematicViewportPanel() {
           realJoints={realTarget.value.joints}
           targetJoints={previewTarget.value.joints}
           targetTcp={[previewTarget.value.tcp[0], previewTarget.value.tcp[1], previewTarget.value.tcp[2]]}
-          targetOrientation={[previewTarget.value.tcp[3], previewTarget.value.tcp[4], previewTarget.value.tcp[5]]}
+          targetQuaternion={previewTarget.value.orientationQuaternion}
           onTcpPositionChange={setTcpPosition}
           onInitialTargetSync={syncTcpPoseFromModel}
-          onTargetOrientationChange={updateTcpOrientationFromGizmo}
+          onTargetQuaternionChange={updateTcpQuaternionFromGizmo}
           onTargetTcpChange={updateTcpPositionFromGizmo}
         />
         <div className="pose-readout current">
