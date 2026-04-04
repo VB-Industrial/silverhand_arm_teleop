@@ -17,11 +17,12 @@ const ARM_LINK6_TCP_OFFSET = new THREE.Vector3(0, 0, PAPER_DH_GEOMETRY_METERS.d6
 type KinematicSceneProps = {
   realJoints: number[];
   targetJoints: number[];
+  realGripperPercent: number;
+  targetGripperPercent: number;
   targetTcp: [number, number, number];
   targetQuaternion: OrientationQuaternion;
   gizmoWristPresetArmed: boolean;
   interactionMode: "idle" | "servo_joystick" | "servo_gripper" | "planner_gizmo" | "planner_joint" | "planner_tcp";
-  gripperPercent: number;
   onTcpPositionChange?: (positions: { real: [number, number, number]; target: [number, number, number] }) => void;
   onInitialTargetSync?: (position: [number, number, number], quaternion: OrientationQuaternion) => void;
   onTargetJointPoseSync?: (position: [number, number, number], quaternion: OrientationQuaternion) => void;
@@ -159,7 +160,7 @@ export function KinematicScene(props: KinematicSceneProps) {
         primeGizmoGrabPreset(
           sceneRefs.current,
           latest.targetJoints,
-          latest.gripperPercent,
+          latest.targetGripperPercent,
           latest.gizmoWristPresetArmed,
           latest.targetQuaternion,
           latest.onConsumeGizmoWristPreset,
@@ -349,7 +350,7 @@ export function KinematicScene(props: KinematicSceneProps) {
         primeGizmoGrabPreset(
           sceneRefs.current,
           latest.targetJoints,
-          latest.gripperPercent,
+          latest.targetGripperPercent,
           latest.gizmoWristPresetArmed,
           latest.targetQuaternion,
           latest.onConsumeGizmoWristPreset,
@@ -464,6 +465,7 @@ export function KinematicScene(props: KinematicSceneProps) {
         });
 
         configureTargetRobot(targetSystem);
+        targetSystem.scale.setScalar(1.003);
 
         robotRoot.add(realSystem);
         robotRoot.add(targetSystem);
@@ -495,8 +497,8 @@ export function KinematicScene(props: KinematicSceneProps) {
 
         applyArmJointValues(realSystem, props.realJoints);
         applyArmJointValues(targetSystem, props.targetJoints);
-        applyHandJointValues(realSystem, props.gripperPercent);
-        applyHandJointValues(targetSystem, props.gripperPercent);
+        applyHandJointValues(realSystem, props.realGripperPercent);
+        applyHandJointValues(targetSystem, props.targetGripperPercent);
         initializeGizmoFromTool(
           sceneRefs.current,
           props.targetTcp,
@@ -507,7 +509,12 @@ export function KinematicScene(props: KinematicSceneProps) {
           syncingGizmoRef,
           initializedFromToolRef,
         );
-        targetSystem.visible = !jointArraysEqual(props.realJoints, props.targetJoints);
+        targetSystem.visible = hasTargetDelta(
+          props.realJoints,
+          props.targetJoints,
+          props.realGripperPercent,
+          props.targetGripperPercent,
+        );
         emitTcpPositions(sceneRefs.current, latestPropsRef.current.onTcpPositionChange);
 
         setLoadState("ready");
@@ -524,6 +531,9 @@ export function KinematicScene(props: KinematicSceneProps) {
     const renderLoop = () => {
       controls.update();
       pruneHelpers();
+      if (sceneRefs.current.targetSystem) {
+        configureTargetRobot(sceneRefs.current.targetSystem);
+      }
       renderer.render(scene, camera);
       animationFrame = window.requestAnimationFrame(renderLoop);
     };
@@ -557,11 +567,16 @@ export function KinematicScene(props: KinematicSceneProps) {
 
     applyArmJointValues(sceneRefs.current.realSystem, props.realJoints);
     applyArmJointValues(sceneRefs.current.targetSystem, props.targetJoints);
-    applyHandJointValues(sceneRefs.current.realSystem, props.gripperPercent);
-    applyHandJointValues(sceneRefs.current.targetSystem, props.gripperPercent);
-    sceneRefs.current.targetSystem.visible = !jointArraysEqual(props.realJoints, props.targetJoints);
+    applyHandJointValues(sceneRefs.current.realSystem, props.realGripperPercent);
+    applyHandJointValues(sceneRefs.current.targetSystem, props.targetGripperPercent);
+    sceneRefs.current.targetSystem.visible = hasTargetDelta(
+      props.realJoints,
+      props.targetJoints,
+      props.realGripperPercent,
+      props.targetGripperPercent,
+    );
     emitTcpPositions(sceneRefs.current, latestPropsRef.current.onTcpPositionChange);
-  }, [props.realJoints, props.targetJoints, props.gripperPercent]);
+  }, [props.realJoints, props.targetJoints, props.realGripperPercent, props.targetGripperPercent]);
 
   useEffect(() => {
     if (
@@ -594,7 +609,7 @@ export function KinematicScene(props: KinematicSceneProps) {
       syncingGizmoRef,
     );
     emitTcpPositions(sceneRefs.current, latestPropsRef.current.onTcpPositionChange);
-  }, [props.targetJoints, props.gripperPercent, props.interactionMode]);
+  }, [props.targetJoints, props.targetGripperPercent, props.interactionMode]);
 
   useEffect(() => {
     if (
@@ -709,12 +724,16 @@ function primeGizmoGrabPreset(
 
 function configureTargetRobot(robot: any) {
   robot.traverse((object: THREE.Object3D) => {
+    if (object.name === "__target_ghost_mesh__" || object.name === "__target_outline__") {
+      return;
+    }
+
     if (object === robot) {
       return;
     }
 
     const mesh = object as THREE.Mesh;
-    if (!("material" in mesh) || !mesh.material) {
+    if (!mesh.isMesh || !("material" in mesh) || !mesh.material) {
       return;
     }
 
@@ -723,19 +742,50 @@ function configureTargetRobot(robot: any) {
       return;
     }
 
-    const materials = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
-    const nextMaterials = materials.map((material) => {
-      const source = material as THREE.MeshStandardMaterial;
-      const tinted = source.clone();
-      tinted.color = new THREE.Color(0x6bc7ff);
-      tinted.transparent = true;
-      tinted.opacity = 0.22;
-      tinted.depthWrite = false;
-      tinted.emissive = new THREE.Color(0x6bc7ff).multiplyScalar(0.08);
-      return tinted;
-    });
+    if (!(mesh.geometry instanceof THREE.BufferGeometry) || !mesh.parent) {
+      return;
+    }
 
-    mesh.material = Array.isArray(mesh.material) ? nextMaterials : nextMaterials[0];
+    if (mesh.userData.__targetGhostPatched) {
+      return;
+    }
+
+    mesh.userData.__targetGhostPatched = true;
+
+    mesh.visible = false;
+
+    const ghostMesh = new THREE.Mesh(
+      mesh.geometry,
+      new THREE.MeshBasicMaterial({
+        color: 0xb8bec8,
+        transparent: true,
+        opacity: 0.38,
+        depthWrite: false,
+        depthTest: false,
+        side: THREE.FrontSide,
+      }),
+    );
+    ghostMesh.name = "__target_ghost_mesh__";
+    ghostMesh.userData.__targetGhostPatched = true;
+    ghostMesh.position.copy(mesh.position);
+    ghostMesh.quaternion.copy(mesh.quaternion);
+    ghostMesh.scale.copy(mesh.scale);
+    ghostMesh.renderOrder = 2;
+    mesh.parent.add(ghostMesh);
+
+    const outline = new THREE.LineSegments(
+      new THREE.EdgesGeometry(mesh.geometry, 25),
+      new THREE.LineBasicMaterial({
+        color: 0xcfd5de,
+        transparent: true,
+        opacity: 0.9,
+        depthWrite: false,
+        depthTest: false,
+      }),
+    );
+    outline.name = "__target_outline__";
+    outline.renderOrder = 3;
+    ghostMesh.add(outline);
   });
 }
 
@@ -756,6 +806,10 @@ function jointArraysEqual(a: number[], b: number[]) {
   }
 
   return a.every((value, index) => Math.abs(value - b[index]) < 0.0001);
+}
+
+function hasTargetDelta(realJoints: number[], targetJoints: number[], realGripperPercent: number, targetGripperPercent: number) {
+  return !jointArraysEqual(realJoints, targetJoints) || Math.abs(realGripperPercent - targetGripperPercent) > 0.001;
 }
 
 function createTcpAxes(offset: THREE.Vector3, opacity: number, scale: number) {

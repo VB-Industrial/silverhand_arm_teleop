@@ -1,4 +1,13 @@
-import { editingDisabled, interactionMode, realTarget, updateGripper } from "../store/appState";
+import {
+  editingDisabled,
+  gripperGoalPercent,
+  interactionMode,
+  realTarget,
+  resetGripperGoal,
+  syncGripperGoalToCurrent,
+  updateGripper,
+} from "../store/appState";
+import { sendGripperGoalToRobot, sendGripperStopToRobot } from "../transport/robotConnectionStore";
 
 export function GripperPanel() {
   return (
@@ -7,7 +16,7 @@ export function GripperPanel() {
     >
       <div className="panel-head">
         <h2>Управление захватом</h2>
-        <span className="muted-text">Позиция прямого управления: {Math.round(realTarget.value.gripper)}%</span>
+        <span className="muted-text">Текущее: {Math.round(realTarget.value.gripper)}% / Цель: {Math.round(gripperGoalPercent.value)}%</span>
       </div>
 
       <div className="gripper-stack">
@@ -19,14 +28,25 @@ export function GripperPanel() {
             updateGripper(Number((event.currentTarget as HTMLInputElement).value));
           }}
           type="range"
-          value={realTarget.value.gripper}
+          value={gripperGoalPercent.value}
         />
         <div className="gripper-actions">
-          <button className="secondary-action" disabled={editingDisabled.value} onClick={() => updateGripper(100)} type="button">
-            Открыть
+          <button className="execute-action" disabled={editingDisabled.value} onClick={sendGripperGoalToRobot} type="button">
+            Движение
           </button>
-          <button className="secondary-action" disabled={editingDisabled.value} onClick={() => updateGripper(0)} type="button">
-            Закрыть
+          <button
+            className="secondary-action"
+            disabled={editingDisabled.value}
+            onClick={() => {
+              syncGripperGoalToCurrent();
+              sendGripperStopToRobot();
+            }}
+            type="button"
+          >
+            Стоп
+          </button>
+          <button className="secondary-action" disabled={editingDisabled.value} onClick={resetGripperGoal} type="button">
+            Сброс
           </button>
         </div>
       </div>

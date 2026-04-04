@@ -773,6 +773,38 @@ input:disabled {
   gap: clamp(6px, 0.55vw, 8px);
 }
 
+.service-url-input {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: min(360px, 42vw);
+  padding: 6px 10px;
+  border: 1px solid var(--border-soft);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.service-url-input span {
+  color: var(--muted);
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.service-url-input input {
+  width: 100%;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.service-status-text {
+  color: var(--muted);
+  font-size: 12px;
+}
+
 .gripper-stack {
   flex: 1;
   min-height: 0;
@@ -937,6 +969,10 @@ input[type="range"].velocity-slider::-moz-range-thumb {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: clamp(6px, 0.55vw, 8px);
+}
+
+.gripper-actions {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .service-actions {

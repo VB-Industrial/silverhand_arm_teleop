@@ -2,6 +2,7 @@ import { useState } from "preact/hooks";
 import { formatNumber } from "../app/viewModel";
 import { KinematicScene } from "../scene/KinematicScene";
 import {
+  gripperGoalPercent,
   consumeGizmoWristPreset,
   gizmoWristPresetArmed,
   interactionMode,
@@ -42,7 +43,8 @@ export function KinematicViewportPanel() {
     >
       <div className="model-placeholder">
         <KinematicScene
-          gripperPercent={realTarget.value.gripper}
+          realGripperPercent={realTarget.value.gripper}
+          targetGripperPercent={gripperGoalPercent.value}
           realJoints={realTarget.value.joints}
           targetJoints={previewTarget.value.joints}
           targetTcp={[previewTarget.value.tcp[0], previewTarget.value.tcp[1], previewTarget.value.tcp[2]]}

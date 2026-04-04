@@ -90,6 +90,7 @@ export const previewTarget = signal<TargetBundle>(defaultTarget());
 export const lockedTarget = signal<TargetBundle | null>(null);
 export const tcpOrientationRates = signal<[number, number, number]>([0, 0, 0]);
 export const gizmoWristPresetArmed = signal(true);
+export const gripperGoalPercent = signal(DEFAULT_GRIPPER);
 
 export const canExecute = computed(
   () =>
@@ -108,6 +109,13 @@ export function setControlMode(mode: ControlMode): void {
 
 export function setInputSource(source: InputSource): void {
   inputSource.value = source;
+}
+
+export function setConnectionReady(ready: boolean): void {
+  safetyState.value = {
+    ...safetyState.value,
+    connectionReady: ready,
+  };
 }
 
 export function setInteractionMode(mode: InteractionMode): void {
@@ -309,20 +317,20 @@ export function updateGripper(value: number): void {
     return;
   }
   interactionMode.value = "servo_gripper";
-  previewTarget.value = {
-    ...previewTarget.value,
-    gripper: value,
-  };
-  realTarget.value = {
-    ...realTarget.value,
-    gripper: value,
-  };
-  if (lockedTarget.value !== null) {
-    lockedTarget.value = {
-      ...lockedTarget.value,
-      gripper: value,
-    };
+  gripperGoalPercent.value = value;
+}
+
+export function resetGripperGoal(): void {
+  if (editingDisabled.value) {
+    return;
   }
+  interactionMode.value = "servo_gripper";
+  gripperGoalPercent.value = 100;
+}
+
+export function syncGripperGoalToCurrent(): void {
+  interactionMode.value = "servo_gripper";
+  gripperGoalPercent.value = realTarget.value.gripper;
 }
 
 export function executeTarget(): void {
@@ -353,6 +361,12 @@ export function finishExecution(): void {
   appState.value = "idle";
 }
 
+export function completeRemoteExecution(): void {
+  lockedTarget.value = null;
+  interactionMode.value = "idle";
+  appState.value = "idle";
+}
+
 export function stopExecution(): void {
   if (!canStop.value) {
     return;
@@ -368,6 +382,7 @@ export function resetState(): void {
   previewTarget.value = cloneTarget(realTarget.value);
   lockedTarget.value = null;
   interactionMode.value = "idle";
+  gripperGoalPercent.value = realTarget.value.gripper;
   resetAllTcpOrientationRates();
   appState.value = "idle";
 }
@@ -377,6 +392,7 @@ export function activateEstop(): void {
   previewTarget.value = cloneTarget(realTarget.value);
   lockedTarget.value = null;
   interactionMode.value = "idle";
+  gripperGoalPercent.value = realTarget.value.gripper;
   resetAllTcpOrientationRates();
   safetyState.value = {
     ...safetyState.value,
@@ -391,6 +407,7 @@ export function resetEstop(): void {
   previewTarget.value = cloneTarget(realTarget.value);
   lockedTarget.value = null;
   interactionMode.value = "idle";
+  gripperGoalPercent.value = realTarget.value.gripper;
   resetAllTcpOrientationRates();
   appState.value = "idle";
   safetyState.value = {
@@ -461,6 +478,87 @@ export function setFault(active: boolean): void {
   };
 }
 
+export function applyRemoteJointState(groupName: "arm" | "gripper", jointNames: string[], positionsRad: number[]): void {
+  if (groupName === "arm") {
+    const nextReal = cloneTarget(realTarget.value);
+    const mapped: Record<string, number> = {};
+    jointNames.forEach((name, index) => {
+      mapped[name] = radToDeg(positionsRad[index] ?? 0);
+    });
+
+    [
+      "arm_joint_1",
+      "arm_joint_2",
+      "arm_joint_3",
+      "arm_joint_4",
+      "arm_joint_5",
+      "arm_joint_6",
+    ].forEach((jointName, index) => {
+      if (jointName in mapped) {
+        nextReal.joints[index] = mapped[jointName];
+      }
+    });
+
+    realTarget.value = nextReal;
+    if (appState.value === "idle") {
+      previewTarget.value = cloneTarget(nextReal);
+    }
+    return;
+  }
+
+  if (groupName === "gripper" && positionsRad.length > 0) {
+    const averageOpening = positionsRad.reduce((sum, value) => sum + value, 0) / positionsRad.length;
+    const percent = Math.max(0, Math.min(100, (averageOpening / 0.01) * 100));
+    realTarget.value = {
+      ...realTarget.value,
+      gripper: percent,
+    };
+    if (appState.value === "idle") {
+      previewTarget.value = {
+        ...previewTarget.value,
+        gripper: percent,
+      };
+    }
+    if (interactionMode.value !== "servo_gripper") {
+      gripperGoalPercent.value = percent;
+    }
+  }
+}
+
+export function applyRemoteExecutionState(
+  status: "idle" | "planning" | "planned" | "executing" | "succeeded" | "aborted" | "failed" | "stopped" | "estop_active",
+): void {
+  switch (status) {
+    case "idle":
+      if (appState.value === "executing") {
+        completeRemoteExecution();
+      } else {
+        appState.value = "idle";
+      }
+      return;
+    case "planning":
+    case "planned":
+      if (appState.value === "idle") {
+        appState.value = "preview";
+      }
+      return;
+    case "executing":
+      appState.value = "executing";
+      return;
+    case "succeeded":
+      completeRemoteExecution();
+      return;
+    case "aborted":
+    case "failed":
+    case "stopped":
+      appState.value = "stopped";
+      return;
+    case "estop_active":
+      appState.value = "estop_active";
+      return;
+  }
+}
+
 function ensureOrientationRateLoop(): void {
   if (orientationRateAnimationFrame !== 0) {
     return;
@@ -515,4 +613,8 @@ function syncEulerReadout(bundle: TargetBundle): void {
   bundle.tcp[3] = roll;
   bundle.tcp[4] = pitch;
   bundle.tcp[5] = yaw;
+}
+
+function radToDeg(value: number): number {
+  return (value * 180) / Math.PI;
 }

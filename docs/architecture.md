@@ -4,20 +4,19 @@
 
 `silverhand_arm_teleop` is a teleoperation system for a rover-mounted manipulator arm.
 
-The current target architecture is split into three runtime layers:
+The current target architecture is split into two runtime layers:
 
 1. `ui`
    The operator console. Displays cameras, kinematic model, controls, safety state, and execution state.
-2. `preview_bridge`
-   Local websocket bridge on the operator workstation. Connected to local `ROS 2 + MoveIt 2`. Used only for IK, collision checking, and preview validation.
-3. `robot_bridge`
-   Remote websocket bridge on the robot computer. Connected to robot-side `MoveIt 2 / ros2_control / executor`. Used only for real robot state and real execution.
+   Keeps local preview, FK, gizmo logic, and UI-side IK helpers.
+2. `robot websocket server`
+   Remote transport layer on the robot computer. Connected to robot-side `MoveIt 2 / ros2_control / executor`. Used for real robot state and real execution.
 
 ## Design Principles
 
 1. The GUI stays lightweight.
-2. Preview and execution are strictly separate concepts.
-3. Local `MoveIt 2` never commands hardware directly.
+2. Preview and execution are still strictly separate concepts.
+3. Local GUI preview does not require local `MoveIt 2`.
 4. Real motion only starts by explicit operator action.
 5. `E-STOP` overrides every other action.
 
@@ -37,10 +36,9 @@ Included:
 Not included yet:
 
 - real ROS 2
-- real MoveIt 2
+- remote websocket transport
 - real cameras
 - real joystick
-- real transport
 - real execution on hardware
 
 ## Planned Runtime Topology
@@ -48,12 +46,11 @@ Not included yet:
 ### Operator workstation
 
 - `ui`
-- `preview_bridge`
-- local `ROS 2 + MoveIt 2`
+- local preview / FK / gizmo / IK UI logic
 
 ### Robot computer
 
-- `robot_bridge`
+- websocket server
 - remote `MoveIt 2 / execution layer`
 - `ros2_control`
 - manipulator and gripper hardware
@@ -66,17 +63,13 @@ Not included yet:
 
 ### Target architecture
 
-`robot_bridge -> UI -> preview_bridge`
+`robot websocket server -> UI`
 
-for current real state synchronization, and
+for current real joint state and execution status, and
 
-`UI -> preview_bridge`
+`UI -> robot websocket server -> robot`
 
-for preview and validation, and
-
-`UI -> robot_bridge -> robot`
-
-for confirmed execution.
+for confirmed planning and execution commands.
 
 ## Safety Model
 
@@ -96,4 +89,4 @@ The UI always distinguishes:
 3. validated target
 4. execution state
 
-Only validated targets may be sent to `robot_bridge` for real execution.
+Only confirmed targets may be sent to the remote robot websocket server for real execution.

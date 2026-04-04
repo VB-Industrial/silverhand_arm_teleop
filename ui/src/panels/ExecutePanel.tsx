@@ -1,17 +1,14 @@
 import {
-  activateEstop,
   appState,
   canExecute,
   canReset,
   canStop,
   estopActive,
-  executeTarget,
   interactionMode,
   resetState,
-  resetEstop,
-  stopExecution,
 } from "../store/appState";
 import { translateInteractionMode, translateState } from "../app/viewModel";
+import { sendEstopToRobot, sendLockedTargetToRobot, sendResetEstopToRobot, sendStopToRobot } from "../transport/robotConnectionStore";
 
 export function ExecutePanel() {
   return (
@@ -27,10 +24,10 @@ export function ExecutePanel() {
       </div>
 
       <div className="execution-actions">
-        <button className="execute-action" disabled={!canExecute.value} onClick={executeTarget} type="button">
+        <button className="execute-action" disabled={!canExecute.value} onClick={sendLockedTargetToRobot} type="button">
           Движение
         </button>
-        <button className="secondary-action" disabled={!canStop.value} onClick={stopExecution} type="button">
+        <button className="secondary-action" disabled={!canStop.value} onClick={sendStopToRobot} type="button">
           Стоп
         </button>
         <button className="secondary-action" disabled={!canReset.value} onClick={resetState} type="button">
@@ -39,13 +36,13 @@ export function ExecutePanel() {
       </div>
 
       <div className="estop-actions">
-        <button className="kill-switch inline" onClick={activateEstop} type="button">
+        <button className="kill-switch inline" onClick={sendEstopToRobot} type="button">
           <span>АВАРИЙНЫЙ СТОП</span>
         </button>
         <button
           className="secondary-action danger-outline"
           disabled={!estopActive.value}
-          onClick={resetEstop}
+          onClick={sendResetEstopToRobot}
           type="button"
         >
           Сброс АС

@@ -1,3 +1,4 @@
+import { useEffect } from "preact/hooks";
 import { CameraGridPanel } from "../panels/CameraGridPanel";
 import { ExecutePanel } from "../panels/ExecutePanel";
 import { GripperPanel } from "../panels/GripperPanel";
@@ -7,8 +8,11 @@ import { KinematicViewportPanel } from "../panels/KinematicViewportPanel";
 import { PosePresetPanel } from "../panels/PosePresetPanel";
 import { ServicePanel } from "../panels/ServicePanel";
 import { TcpControlPanel } from "../panels/TcpControlPanel";
+import { initializeRobotConnection } from "../transport/robotConnectionStore";
 
 export function App() {
+  useEffect(() => initializeRobotConnection(), []);
+
   return (
     <main className="console-shell">
       <HeaderBar />
