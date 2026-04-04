@@ -48,6 +48,8 @@ type TargetBundle = {
 const DEFAULT_JOINTS = [0, 0, 0, 0, 0, 0];
 const DEFAULT_TCP = [0, 0, 0, 0, 0, 0];
 const DEFAULT_GRIPPER = 55;
+const FOLDED_PRESET_JOINTS: JointVector = [0, 0, 0, 0, 0, 0];
+const UNFOLDED_PRESET_JOINTS: JointVector = [0, 120, -30, 0, 90, 0];
 const ORIENTATION_RATE_MAX_DEG_PER_SEC = 90;
 const previewController = createPreviewController();
 let orientationRateAnimationFrame = 0;
@@ -141,6 +143,14 @@ export function updateJoint(index: number, value: number): void {
   appState.value = "target_locked";
 }
 
+export function applyFoldedPreset(): void {
+  applyJointPreset(FOLDED_PRESET_JOINTS);
+}
+
+export function applyUnfoldedPreset(): void {
+  applyJointPreset(UNFOLDED_PRESET_JOINTS);
+}
+
 export function updateTcp(index: number, value: number): void {
   if (editingDisabled.value) {
     return;
@@ -188,11 +198,33 @@ export function syncTcpPoseFromModel(
   position: [number, number, number],
   quaternion: OrientationQuaternion,
 ): void {
+  const normalizedQuaternion = normalizeQuaternion(quaternion);
+  const currentReal = realTarget.value;
+  const currentPreview = previewTarget.value;
+  const sameRealPosition =
+    Math.abs(currentReal.tcp[0] - position[0]) < 0.0005 &&
+    Math.abs(currentReal.tcp[1] - position[1]) < 0.0005 &&
+    Math.abs(currentReal.tcp[2] - position[2]) < 0.0005;
+  const samePreviewPosition =
+    Math.abs(currentPreview.tcp[0] - position[0]) < 0.0005 &&
+    Math.abs(currentPreview.tcp[1] - position[1]) < 0.0005 &&
+    Math.abs(currentPreview.tcp[2] - position[2]) < 0.0005;
+  const sameRealQuaternion = currentReal.orientationQuaternion.every(
+    (value, index) => Math.abs(value - normalizedQuaternion[index]) < 0.0005,
+  );
+  const samePreviewQuaternion = currentPreview.orientationQuaternion.every(
+    (value, index) => Math.abs(value - normalizedQuaternion[index]) < 0.0005,
+  );
+
+  if (sameRealPosition && samePreviewPosition && sameRealQuaternion && samePreviewQuaternion) {
+    return;
+  }
+
   const nextReal = cloneTarget(realTarget.value);
   nextReal.tcp[0] = position[0];
   nextReal.tcp[1] = position[1];
   nextReal.tcp[2] = position[2];
-  nextReal.orientationQuaternion = normalizeQuaternion(quaternion);
+  nextReal.orientationQuaternion = normalizedQuaternion;
   syncEulerReadout(nextReal);
   realTarget.value = nextReal;
 
@@ -200,9 +232,40 @@ export function syncTcpPoseFromModel(
   nextPreview.tcp[0] = position[0];
   nextPreview.tcp[1] = position[1];
   nextPreview.tcp[2] = position[2];
-  nextPreview.orientationQuaternion = normalizeQuaternion(quaternion);
+  nextPreview.orientationQuaternion = normalizedQuaternion;
   syncEulerReadout(nextPreview);
   previewTarget.value = nextPreview;
+}
+
+export function syncPreviewTcpPoseFromModel(
+  position: [number, number, number],
+  quaternion: OrientationQuaternion,
+): void {
+  const normalizedQuaternion = normalizeQuaternion(quaternion);
+  const currentPreview = previewTarget.value;
+  const samePreviewPosition =
+    Math.abs(currentPreview.tcp[0] - position[0]) < 0.0005 &&
+    Math.abs(currentPreview.tcp[1] - position[1]) < 0.0005 &&
+    Math.abs(currentPreview.tcp[2] - position[2]) < 0.0005;
+  const samePreviewQuaternion = currentPreview.orientationQuaternion.every(
+    (value, index) => Math.abs(value - normalizedQuaternion[index]) < 0.0005,
+  );
+
+  if (samePreviewPosition && samePreviewQuaternion) {
+    return;
+  }
+
+  const nextPreview = cloneTarget(previewTarget.value);
+  nextPreview.tcp[0] = position[0];
+  nextPreview.tcp[1] = position[1];
+  nextPreview.tcp[2] = position[2];
+  nextPreview.orientationQuaternion = normalizedQuaternion;
+  syncEulerReadout(nextPreview);
+  previewTarget.value = nextPreview;
+
+  if (lockedTarget.value !== null) {
+    lockedTarget.value = cloneTarget(nextPreview);
+  }
 }
 
 export function setTcpOrientationRate(index: 3 | 4 | 5, value: number): void {
@@ -341,6 +404,20 @@ function applyTcpPreview(next: TargetBundle): void {
   previewTarget.value = next;
   lockedTarget.value = null;
   appState.value = "preview";
+}
+
+function applyJointPreset(joints: JointVector): void {
+  if (editingDisabled.value) {
+    return;
+  }
+
+  controlMode.value = "joint";
+  interactionMode.value = "planner_joint";
+  const next = cloneTarget(previewTarget.value);
+  next.joints = [...joints];
+  previewTarget.value = next;
+  lockedTarget.value = cloneTarget(next);
+  appState.value = "target_locked";
 }
 
 function toTcpPose(bundle: TargetBundle): TcpPose {

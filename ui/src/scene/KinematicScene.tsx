@@ -10,6 +10,7 @@ const JOINT_NAMES = ["arm_joint_1", "arm_joint_2", "arm_joint_3", "arm_joint_4",
 const HAND_JOINT_NAMES = ["hand_left_finger_joint", "hand_right_finger_joint"];
 const HAND_MAX_OPENING = 0.01;
 const HAND_TCP_OFFSET = new THREE.Vector3(0, 0, 0.0642);
+const HAND_GRASP_FORWARD_OFFSET = 0.05;
 const ARM_LINK6_TCP_OFFSET = new THREE.Vector3(0, 0, PAPER_DH_GEOMETRY_METERS.d6);
 
 type KinematicSceneProps = {
@@ -17,9 +18,11 @@ type KinematicSceneProps = {
   targetJoints: number[];
   targetTcp: [number, number, number];
   targetQuaternion: OrientationQuaternion;
+  interactionMode: "idle" | "servo_joystick" | "servo_gripper" | "planner_gizmo" | "planner_joint" | "planner_tcp";
   gripperPercent: number;
   onTcpPositionChange?: (positions: { real: [number, number, number]; target: [number, number, number] }) => void;
   onInitialTargetSync?: (position: [number, number, number], quaternion: OrientationQuaternion) => void;
+  onTargetJointPoseSync?: (position: [number, number, number], quaternion: OrientationQuaternion) => void;
   onTargetQuaternionChange?: (quaternion: OrientationQuaternion) => void;
   onTargetTcpChange?: (position: [number, number, number]) => void;
 };
@@ -525,7 +528,46 @@ export function KinematicScene(props: KinematicSceneProps) {
   }, [props.realJoints, props.targetJoints, props.gripperPercent]);
 
   useEffect(() => {
-    if (!sceneRefs.current.gizmoAnchor || !sceneRefs.current.armBase || draggingRef.current || sphereDraggingRef.current) {
+    if (
+      props.interactionMode !== "planner_joint" ||
+      !sceneRefs.current.gizmoAnchor ||
+      !sceneRefs.current.armBase ||
+      !sceneRefs.current.targetTool ||
+      draggingRef.current ||
+      sphereDraggingRef.current
+    ) {
+      return;
+    }
+
+    const targetPosition = tcpPositionInReferenceFrame(
+      sceneRefs.current.armBase,
+      sceneRefs.current.targetTool,
+      sceneRefs.current.targetLeftFinger,
+      sceneRefs.current.targetRightFinger,
+    );
+    const targetToolQuaternion = new THREE.Quaternion();
+    sceneRefs.current.targetTool.getWorldQuaternion(targetToolQuaternion);
+    const targetQuaternion = tcpQuaternionFromWorld(sceneRefs.current.armBase, targetToolQuaternion);
+
+    props.onTargetJointPoseSync?.(targetPosition, targetQuaternion);
+    setGizmoAnchorPose(
+      sceneRefs.current.gizmoAnchor,
+      sceneRefs.current.armBase,
+      targetPosition,
+      targetQuaternion,
+      syncingGizmoRef,
+    );
+    emitTcpPositions(sceneRefs.current, props.onTcpPositionChange);
+  }, [props.targetJoints, props.gripperPercent, props.interactionMode]);
+
+  useEffect(() => {
+    if (
+      props.interactionMode === "planner_joint" ||
+      !sceneRefs.current.gizmoAnchor ||
+      !sceneRefs.current.armBase ||
+      draggingRef.current ||
+      sphereDraggingRef.current
+    ) {
       return;
     }
 
@@ -786,7 +828,7 @@ function getTcpLocalOffset(
     leftFinger.updateWorldMatrix(true, true);
     rightFinger.updateWorldMatrix(true, true);
     const midpointWorld = getFingerMidpointWorld(leftFinger, rightFinger);
-    return tool.worldToLocal(midpointWorld);
+    return tool.worldToLocal(midpointWorld).add(new THREE.Vector3(0, 0, HAND_GRASP_FORWARD_OFFSET));
   }
 
   if (tool?.name === "hand_gripper_link") {
@@ -800,13 +842,7 @@ function getTcpWorldPosition(
   leftFinger?: THREE.Object3D | null,
   rightFinger?: THREE.Object3D | null,
 ): THREE.Vector3 {
-  if (tool.name === "hand_gripper_link" && leftFinger && rightFinger) {
-    leftFinger.updateWorldMatrix(true, true);
-    rightFinger.updateWorldMatrix(true, true);
-    return getFingerMidpointWorld(leftFinger, rightFinger);
-  }
-
-  return tool.localToWorld(getTcpLocalOffset(tool, leftFinger, rightFinger));
+  return tool.localToWorld(getTcpLocalOffset(tool, leftFinger, rightFinger).clone());
 }
 
 function getFingerMidpointWorld(leftFinger: THREE.Object3D, rightFinger: THREE.Object3D): THREE.Vector3 {

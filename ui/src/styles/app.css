@@ -629,7 +629,7 @@ input:disabled {
 
 .action-stack {
   display: grid;
-  grid-template-rows: minmax(0, 1.2fr) minmax(0, 0.8fr);
+  grid-template-rows: minmax(0, 1fr) auto minmax(0, 0.7fr);
   align-content: stretch;
   gap: var(--gap);
   min-height: 0;
@@ -644,6 +644,38 @@ input:disabled {
 .execute-panel,
 .gripper-panel {
   overflow: hidden;
+}
+
+.pose-preset-panel {
+  display: flex;
+  flex-direction: row;
+  gap: clamp(6px, 0.55vw, 8px);
+  align-items: center;
+  justify-content: stretch;
+  padding-top: clamp(6px, 0.5vw, 8px);
+  padding-bottom: clamp(6px, 0.5vw, 8px);
+}
+
+.action-stack > .pose-preset-panel {
+  flex-direction: row;
+}
+
+.preset-action {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: clamp(38px, 4.2vh, 44px);
+  padding: clamp(8px, 0.65vw, 10px) clamp(10px, 0.8vw, 12px);
+  border-radius: 14px;
+  border: 1px solid #f0c46d;
+  background: linear-gradient(180deg, #e8b752 0%, #be8420 100%);
+  color: #16140f;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.preset-action:disabled {
+  cursor: not-allowed;
 }
 
 .execute-panel {
@@ -747,7 +779,7 @@ input:disabled {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
-  gap: clamp(10px, 1vh, 14px);
+  gap: clamp(8px, 0.75vh, 10px);
 }
 
 .gripper-panel input[type="range"] {

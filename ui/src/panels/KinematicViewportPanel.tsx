@@ -6,6 +6,7 @@ import {
   previewTarget,
   realTarget,
   setControlMode,
+  syncPreviewTcpPoseFromModel,
   syncTcpPoseFromModel,
   updateTcpQuaternionFromGizmo,
   updateTcpPositionFromGizmo,
@@ -44,8 +45,10 @@ export function KinematicViewportPanel() {
           targetJoints={previewTarget.value.joints}
           targetTcp={[previewTarget.value.tcp[0], previewTarget.value.tcp[1], previewTarget.value.tcp[2]]}
           targetQuaternion={previewTarget.value.orientationQuaternion}
+          interactionMode={interactionMode.value}
           onTcpPositionChange={setTcpPosition}
           onInitialTargetSync={syncTcpPoseFromModel}
+          onTargetJointPoseSync={syncPreviewTcpPoseFromModel}
           onTargetQuaternionChange={updateTcpQuaternionFromGizmo}
           onTargetTcpChange={updateTcpPositionFromGizmo}
         />
