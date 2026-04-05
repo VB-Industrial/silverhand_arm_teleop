@@ -74,7 +74,17 @@ function solvePaperAnalyticIk(targetPose: TcpPose, geometry: PaperDhGeometry): A
     z: targetPosition.z - geometry.d6 * toolDirection[2],
   };
 
-  const wristCenterPlanarRadius = Math.hypot(targetWristCenter.x, targetWristCenter.y);
+  const theta1 = Math.atan2(targetWristCenter.y, targetWristCenter.x);
+  const shoulderOrigin = {
+    x: geometry.shoulderOffsetPlanar * Math.cos(theta1),
+    y: geometry.shoulderOffsetPlanar * Math.sin(theta1),
+  };
+  const shoulderRelativeWristCenter = {
+    x: targetWristCenter.x - shoulderOrigin.x,
+    y: targetWristCenter.y - shoulderOrigin.y,
+  };
+
+  const wristCenterPlanarRadius = Math.hypot(shoulderRelativeWristCenter.x, shoulderRelativeWristCenter.y);
   const wristCenterHeightFromShoulder = targetWristCenter.z - geometry.d1;
   const shoulderToWristDistance = Math.hypot(wristCenterPlanarRadius, wristCenterHeightFromShoulder);
   const elbowToWristLength = Math.hypot(geometry.a3, geometry.d4);
@@ -100,7 +110,6 @@ function solvePaperAnalyticIk(targetPose: TcpPose, geometry: PaperDhGeometry): A
     return [];
   }
 
-  const theta1 = Math.atan2(targetWristCenter.y, targetWristCenter.x);
   const mu = Math.atan2(wristCenterHeightFromShoulder, wristCenterPlanarRadius);
   const gamma =  Math.acos(gammaArg);
   const lambda = Math.acos(lambdaArg);
@@ -124,9 +133,11 @@ function solvePaperAnalyticIk(targetPose: TcpPose, geometry: PaperDhGeometry): A
         wrapToPi(wrist[1]),
         wrapToPi(wrist[2]),
       ];
+      const refinedJoints =
+        refineFullPoseNumerically(targetPosition, targetRotation, jointsRad) ?? jointsRad;
 
       candidates.push({
-        jointsDeg: jointsRad.map(radToDeg) as JointVector,
+        jointsDeg: refinedJoints.map(radToDeg) as JointVector,
         branchId: `elbow_${elbowSign > 0 ? "up" : "down"}_wrist_${index}`,
       });
     });
@@ -151,6 +162,39 @@ function solveWristOrientation(r36: Matrix3): [number, number, number][] {
   }
 
   return dedupeWristSolutions(solutions);
+}
+
+function refineFullPoseNumerically(
+  targetPosition: { x: number; y: number; z: number },
+  targetRotation: Matrix3,
+  seed: JointVector,
+): JointVector | null {
+  let q: JointVector = [...seed] as JointVector;
+
+  for (let iteration = 0; iteration < 18; iteration += 1) {
+    const current = tcpPoseFromJointsUrdf(q);
+    const error = fullPoseErrorVector(current.position, current.rotation, targetPosition, targetRotation);
+    const positionError = Math.hypot(error[0], error[1], error[2]);
+    const rotationError = Math.hypot(error[3], error[4], error[5]);
+
+    if (positionError < 0.002 && rotationError < 0.02) {
+      return q.map(wrapToPi) as JointVector;
+    }
+
+    const jacobian = numericalFullPoseJacobian(q, targetPosition, targetRotation);
+    const step = solveLeastSquares6x6(jacobian, error);
+    if (!step) {
+      break;
+    }
+
+    const stepNorm = Math.hypot(...step);
+    const scale = Math.min(1, 0.22 / Math.max(EPSILON, stepNorm));
+    q = q.map((value, index) => wrapToPi(value + step[index] * scale)) as JointVector;
+  }
+
+  const finalPose = tcpPoseFromJointsUrdf(q);
+  const finalError = fullPoseErrorVector(finalPose.position, finalPose.rotation, targetPosition, targetRotation);
+  return Math.hypot(finalError[0], finalError[1], finalError[2]) < 0.01 ? (q.map(wrapToPi) as JointVector) : null;
 }
 
 function rotation03Urdf(theta1: number, theta2: number, theta3: number): Matrix3 {
@@ -270,6 +314,93 @@ function wristRotationUrdf(q4: number, q5: number, q6: number): Matrix3 {
   return multiplyMatrix3(multiplyMatrix3(j4, j5), j6);
 }
 
+function tcpPoseFromJointsUrdf(joints: JointVector): {
+  position: { x: number; y: number; z: number };
+  rotation: Matrix3;
+} {
+  let transform = identityTransform4();
+  transform = multiplyTransform4(transform, transformFromRpyTranslation(0, 0, 1.5708, 0, 0, 0));
+  transform = multiplyTransform4(transform, jointTransformFromUrdf(Math.PI, 0, 0, 0, 0, 0.003445, [0, 0, -1], joints[0]));
+  transform = multiplyTransform4(
+    transform,
+    jointTransformFromUrdf(1.5708, -1.0472, -1.5708, 0, 0.064146, -0.16608, [0, 0, -1], joints[1]),
+  );
+  transform = multiplyTransform4(
+    transform,
+    jointTransformFromUrdf(0, 0, 2.0708, 0.1525, -0.26414, 0, [0, 0, -1], joints[2]),
+  );
+  transform = multiplyTransform4(
+    transform,
+    jointTransformFromUrdf(1.5708, -1.2554, -1.5708, 0, 0, 0.00675, [0, 0, -1], joints[3]),
+  );
+  transform = multiplyTransform4(
+    transform,
+    jointTransformFromUrdf(1.5708, 0, -2.8262, 0, 0, -0.22225, [1, 0, 0], joints[4]),
+  );
+  transform = multiplyTransform4(
+    transform,
+    jointTransformFromUrdf(0, 0, -1.5708, -0.000294, 0, 0.02117, [0, 0, 1], joints[5]),
+  );
+  transform = multiplyTransform4(transform, transformFromRpyTranslation(0, 0, 0, 0, 0, 0.0642));
+
+  return {
+    position: {
+      x: transform[0][3],
+      y: transform[1][3],
+      z: transform[2][3],
+    },
+    rotation: [
+      [transform[0][0], transform[0][1], transform[0][2]],
+      [transform[1][0], transform[1][1], transform[1][2]],
+      [transform[2][0], transform[2][1], transform[2][2]],
+    ],
+  };
+}
+
+function fullPoseErrorVector(
+  currentPosition: { x: number; y: number; z: number },
+  currentRotation: Matrix3,
+  targetPosition: { x: number; y: number; z: number },
+  targetRotation: Matrix3,
+): [number, number, number, number, number, number] {
+  const rotationError = rotationErrorVector(currentRotation, targetRotation);
+  return [
+    targetPosition.x - currentPosition.x,
+    targetPosition.y - currentPosition.y,
+    targetPosition.z - currentPosition.z,
+    rotationError[0],
+    rotationError[1],
+    rotationError[2],
+  ];
+}
+
+function numericalFullPoseJacobian(
+  joints: JointVector,
+  targetPosition: { x: number; y: number; z: number },
+  targetRotation: Matrix3,
+): number[][] {
+  const step = 1e-4;
+  const basePose = tcpPoseFromJointsUrdf(joints);
+  const baseError = fullPoseErrorVector(basePose.position, basePose.rotation, targetPosition, targetRotation);
+  return [0, 1, 2, 3, 4, 5].map((jointIndex) => {
+    const next = [...joints] as JointVector;
+    next[jointIndex] += step;
+    const nextPose = tcpPoseFromJointsUrdf(next);
+    const nextError = fullPoseErrorVector(nextPose.position, nextPose.rotation, targetPosition, targetRotation);
+    return baseError.map((value, rowIndex) => (value - nextError[rowIndex]) / step);
+  });
+}
+
+function solveLeastSquares6x6(jacobianColumns: number[][], error: [number, number, number, number, number, number]): number[] | null {
+  const jt = transposeRectangular(jacobianColumns);
+  const jtj = multiplyRectangular(jt, jacobianColumns);
+  for (let i = 0; i < 6; i += 1) {
+    jtj[i][i] += 1e-4;
+  }
+  const jte = multiplyRectangularVector(jt, error);
+  return solveLinearSystem(jtj, jte);
+}
+
 function rotationErrorVector(current: Matrix3, target: Matrix3): [number, number, number] {
   const delta = multiplyMatrix3(target, transposeMatrix3(current));
   return rotationLogVector(delta);
@@ -299,6 +430,73 @@ function rotationLogVector(rotation: Matrix3): [number, number, number] {
     scale * (rotation[0][2] - rotation[2][0]),
     scale * (rotation[1][0] - rotation[0][1]),
   ];
+}
+
+type Transform4 = [
+  [number, number, number, number],
+  [number, number, number, number],
+  [number, number, number, number],
+  [number, number, number, number],
+];
+
+function identityTransform4(): Transform4 {
+  return [
+    [1, 0, 0, 0],
+    [0, 1, 0, 0],
+    [0, 0, 1, 0],
+    [0, 0, 0, 1],
+  ];
+}
+
+function transformFromRpyTranslation(
+  roll: number,
+  pitch: number,
+  yaw: number,
+  x: number,
+  y: number,
+  z: number,
+): Transform4 {
+  const rotation = rotationMatrixFromRpyRad(roll, pitch, yaw);
+  return [
+    [rotation[0][0], rotation[0][1], rotation[0][2], x],
+    [rotation[1][0], rotation[1][1], rotation[1][2], y],
+    [rotation[2][0], rotation[2][1], rotation[2][2], z],
+    [0, 0, 0, 1],
+  ];
+}
+
+function jointTransformFromUrdf(
+  roll: number,
+  pitch: number,
+  yaw: number,
+  x: number,
+  y: number,
+  z: number,
+  axis: [number, number, number],
+  angle: number,
+): Transform4 {
+  const origin = transformFromRpyTranslation(roll, pitch, yaw, x, y, z);
+  const jointRotation = rotationAroundAxis(axis, angle);
+  const rotationTransform: Transform4 = [
+    [jointRotation[0][0], jointRotation[0][1], jointRotation[0][2], 0],
+    [jointRotation[1][0], jointRotation[1][1], jointRotation[1][2], 0],
+    [jointRotation[2][0], jointRotation[2][1], jointRotation[2][2], 0],
+    [0, 0, 0, 1],
+  ];
+  return multiplyTransform4(origin, rotationTransform);
+}
+
+function multiplyTransform4(a: Transform4, b: Transform4): Transform4 {
+  const out = identityTransform4();
+  for (let row = 0; row < 4; row += 1) {
+    for (let col = 0; col < 4; col += 1) {
+      out[row][col] = 0;
+      for (let k = 0; k < 4; k += 1) {
+        out[row][col] += a[row][k] * b[k][col];
+      }
+    }
+  }
+  return out;
 }
 
 function rotationMatrixFromRpyRad(roll: number, pitch: number, yaw: number): Matrix3 {
@@ -356,6 +554,57 @@ function solveLinear3x3(matrix: Matrix3, vector: [number, number, number]): [num
   ];
 
   return multiplyMatrix3Vector(inverse, vector);
+}
+
+function transposeRectangular(matrix: number[][]): number[][] {
+  return matrix[0].map((_, columnIndex) => matrix.map((row) => row[columnIndex]));
+}
+
+function multiplyRectangular(a: number[][], b: number[][]): number[][] {
+  return a.map((row) =>
+    b[0].map((_, columnIndex) => row.reduce((sum, value, k) => sum + value * b[k][columnIndex], 0)),
+  );
+}
+
+function multiplyRectangularVector(matrix: number[][], vector: number[]): number[] {
+  return matrix.map((row) => row.reduce((sum, value, index) => sum + value * vector[index], 0));
+}
+
+function solveLinearSystem(matrix: number[][], vector: number[]): number[] | null {
+  const n = vector.length;
+  const a = matrix.map((row, index) => [...row, vector[index]]);
+
+  for (let pivot = 0; pivot < n; pivot += 1) {
+    let maxRow = pivot;
+    for (let row = pivot + 1; row < n; row += 1) {
+      if (Math.abs(a[row][pivot]) > Math.abs(a[maxRow][pivot])) {
+        maxRow = row;
+      }
+    }
+
+    if (Math.abs(a[maxRow][pivot]) < 1e-9) {
+      return null;
+    }
+
+    [a[pivot], a[maxRow]] = [a[maxRow], a[pivot]];
+
+    const pivotValue = a[pivot][pivot];
+    for (let col = pivot; col <= n; col += 1) {
+      a[pivot][col] /= pivotValue;
+    }
+
+    for (let row = 0; row < n; row += 1) {
+      if (row === pivot) {
+        continue;
+      }
+      const factor = a[row][pivot];
+      for (let col = pivot; col <= n; col += 1) {
+        a[row][col] -= factor * a[pivot][col];
+      }
+    }
+  }
+
+  return a.map((row) => row[n]);
 }
 
 function multiplyMatrix3Vector(matrix: Matrix3, vector: [number, number, number]): [number, number, number] {

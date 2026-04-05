@@ -11,7 +11,6 @@ const HAND_JOINT_NAMES = ["hand_left_finger_joint", "hand_right_finger_joint"];
 const GIZMO_GRAB_WRIST_PRESET_DEG: [number, number, number] = [0, 90, 0];
 const HAND_MAX_OPENING = 0.01;
 const HAND_TCP_OFFSET = new THREE.Vector3(0, 0, 0.0642);
-const HAND_GRASP_FORWARD_OFFSET = 0.05;
 const ARM_LINK6_TCP_OFFSET = new THREE.Vector3(0, 0, PAPER_DH_GEOMETRY_METERS.d6);
 
 type KinematicSceneProps = {
@@ -959,7 +958,7 @@ function getTcpLocalOffset(
     leftFinger.updateWorldMatrix(true, true);
     rightFinger.updateWorldMatrix(true, true);
     const midpointWorld = getFingerMidpointWorld(leftFinger, rightFinger);
-    return tool.worldToLocal(midpointWorld).add(new THREE.Vector3(0, 0, HAND_GRASP_FORWARD_OFFSET));
+    return tool.worldToLocal(midpointWorld);
   }
 
   if (tool?.name === "hand_gripper_link") {

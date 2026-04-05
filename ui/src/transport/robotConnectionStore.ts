@@ -33,6 +33,9 @@ let client: RobotSocketClient | null = null;
 let heartbeatTimer = 0;
 let heartbeatCounter = 1;
 let manuallyDisconnected = false;
+let pendingJointStateFrame = 0;
+let pendingArmJointState: { jointNames: string[]; positionsRad: number[] } | null = null;
+let pendingGripperJointState: { jointNames: string[]; positionsRad: number[] } | null = null;
 
 export function initializeRobotConnection() {
   connectRobot();
@@ -243,7 +246,7 @@ function handleRobotMessage(message: RobotProtocolMessage) {
     case "pong":
       return;
     case "joint_state":
-      applyRemoteJointState(message.payload.group_name, message.payload.name, message.payload.position_rad);
+      queueRemoteJointState(message.payload.group_name, message.payload.name, message.payload.position_rad);
       return;
     case "planning_state":
       applyRemoteExecutionState(message.payload.status);
@@ -260,6 +263,40 @@ function handleRobotMessage(message: RobotProtocolMessage) {
     default:
       return;
   }
+}
+
+function queueRemoteJointState(groupName: RobotGroupName, jointNames: string[], positionsRad: number[]) {
+  if (groupName === "arm") {
+    pendingArmJointState = {
+      jointNames: [...jointNames],
+      positionsRad: [...positionsRad],
+    };
+  } else if (groupName === "gripper") {
+    pendingGripperJointState = {
+      jointNames: [...jointNames],
+      positionsRad: [...positionsRad],
+    };
+  } else {
+    return;
+  }
+
+  if (pendingJointStateFrame !== 0) {
+    return;
+  }
+
+  pendingJointStateFrame = window.requestAnimationFrame(() => {
+    pendingJointStateFrame = 0;
+
+    if (pendingArmJointState) {
+      applyRemoteJointState("arm", pendingArmJointState.jointNames, pendingArmJointState.positionsRad);
+      pendingArmJointState = null;
+    }
+
+    if (pendingGripperJointState) {
+      applyRemoteJointState("gripper", pendingGripperJointState.jointNames, pendingGripperJointState.positionsRad);
+      pendingGripperJointState = null;
+    }
+  });
 }
 
 function sendHello() {

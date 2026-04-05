@@ -1,5 +1,6 @@
 export type PaperDhGeometry = {
   d1: number;
+  shoulderOffsetPlanar: number;
   a2: number;
   a3: number;
   d4: number;
@@ -13,6 +14,8 @@ export type PaperDhGeometry = {
 export const PAPER_DH_GEOMETRY_METERS: PaperDhGeometry = {
   // Base height from joint 1 frame to the shoulder plane.
   d1: 0.169525,
+  // Planar offset from joint 1 axis to joint 2 axis.
+  shoulderOffsetPlanar: 0.064146,
   // Effective shoulder-to-elbow link length.
   a2: 0.305001,
   // Small elbow offset used in the paper's DH model.
