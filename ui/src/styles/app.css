@@ -983,9 +983,46 @@ input[type="range"].velocity-slider::-moz-range-thumb {
 .service-bar {
   display: grid;
   grid-template-columns: auto 1fr;
-  align-items: center;
+  align-items: start;
   gap: clamp(10px, 0.8vw, 14px);
   padding: clamp(6px, 0.5vw, 8px) clamp(10px, 0.75vw, 12px);
+}
+
+.service-bar-toggle {
+  display: flex;
+  justify-content: flex-end;
+  align-items: start;
+}
+
+.service-bar-collapsed {
+  align-items: center;
+  grid-template-columns: 1fr auto;
+  gap: 8px;
+  padding-top: 4px;
+  padding-bottom: 4px;
+  min-height: 0;
+}
+
+.service-bar-collapsed .service-bar-label {
+  gap: 0;
+  min-width: 0;
+}
+
+.service-bar-collapsed .service-bar-label .section-overline {
+  font-size: 10px;
+  line-height: 1;
+}
+
+.service-bar-collapsed .service-bar-label strong {
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.service-bar-collapsed .service-bar-toggle .secondary-action {
+  min-height: 28px;
+  padding: 4px 10px;
+  font-size: 11px;
 }
 
 .service-bar-label {
@@ -1002,6 +1039,40 @@ input[type="range"].velocity-slider::-moz-range-thumb {
 .service-bar-label strong {
   font-size: clamp(11px, 0.78vw, 12px);
   line-height: 1.1;
+}
+
+.service-status-block {
+  grid-column: 1 / -1;
+  display: grid;
+  gap: 6px;
+}
+
+.service-status-log {
+  display: grid;
+  gap: 4px;
+  max-height: 96px;
+  overflow-y: auto;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  overscroll-behavior: contain;
+}
+
+.service-log-entry {
+  font-size: clamp(11px, 0.76vw, 12px);
+  line-height: 1.2;
+  color: var(--muted);
+}
+
+.service-log-entry-info {
+  color: #b8cbe0;
+}
+
+.service-log-entry-warn {
+  color: #f2c46e;
+}
+
+.service-log-entry-error {
+  color: #ff9d96;
 }
 
 .estop-actions {

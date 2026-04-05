@@ -17,6 +17,12 @@ import { ROBOT_PROTOCOL_VERSION, type RobotProtocolMessage, type RobotGroupName 
 import { RobotSocketClient } from "./robotSocket";
 
 type ConnectionState = "disconnected" | "connecting" | "connected" | "error";
+type BackendLogLevel = "info" | "warn" | "error";
+export type BackendLogEntry = {
+  timestamp: number;
+  level: BackendLogLevel;
+  text: string;
+};
 
 const STORAGE_KEY = "silverhand.robot_ws_url";
 const DEFAULT_URL = (import.meta.env as { VITE_ROBOT_WS_URL?: string }).VITE_ROBOT_WS_URL ?? "ws://127.0.0.1:8765";
@@ -28,6 +34,8 @@ export const robotConnectionError = signal("");
 export const robotConnectionServerName = signal("");
 export const robotConnectionGroups = signal<RobotGroupName[]>([]);
 export const robotLastMessageTs = signal<number | null>(null);
+export const robotBackendStatus = signal("");
+export const robotBackendLog = signal<BackendLogEntry[]>([]);
 
 let client: RobotSocketClient | null = null;
 let heartbeatTimer = 0;
@@ -61,12 +69,14 @@ export function connectRobot() {
   manuallyDisconnected = false;
   robotConnectionState.value = "connecting";
   robotConnectionError.value = "";
+  robotBackendStatus.value = "Подключение к роботу...";
 
   client = new RobotSocketClient(url, {
     onOpen: () => {
       robotConnectionState.value = "connected";
       robotConnectionError.value = "";
       setConnectionReady(true);
+      pushBackendLog("info", `WS подключён: ${url}`);
       sendHello();
       startHeartbeat();
     },
@@ -76,12 +86,16 @@ export function connectRobot() {
       robotConnectionState.value = manuallyDisconnected ? "disconnected" : "error";
       if (!manuallyDisconnected) {
         robotConnectionError.value = "Соединение закрыто.";
+        pushBackendLog("warn", "Соединение с роботом закрыто.");
+      } else {
+        pushBackendLog("info", "WS отключён вручную.");
       }
     },
     onError: () => {
       robotConnectionState.value = "error";
       robotConnectionError.value = "Ошибка websocket.";
       setConnectionReady(false);
+      pushBackendLog("error", "Ошибка websocket.");
     },
     onMessage: handleRobotMessage,
   });
@@ -97,6 +111,7 @@ export function disconnectRobot(manual = true) {
   setConnectionReady(false);
   if (manual) {
     robotConnectionState.value = "disconnected";
+    robotBackendStatus.value = "WS отключён.";
   }
 }
 
@@ -242,6 +257,7 @@ function handleRobotMessage(message: RobotProtocolMessage) {
     case "hello_ack":
       robotConnectionServerName.value = message.payload.server_name;
       robotConnectionGroups.value = message.payload.groups;
+      pushBackendLog("info", `Handshake ok: ${message.payload.server_name}`);
       return;
     case "pong":
       return;
@@ -249,9 +265,11 @@ function handleRobotMessage(message: RobotProtocolMessage) {
       queueRemoteJointState(message.payload.group_name, message.payload.name, message.payload.position_rad);
       return;
     case "planning_state":
+      pushBackendLog(message.payload.status === "failed" ? "warn" : "info", formatBackendState("Планирование", message.payload.group_name, message.payload.status, message.payload.message));
       applyRemoteExecutionState(message.payload.status);
       return;
     case "execution_state":
+      pushBackendLog(message.payload.status === "failed" || message.payload.status === "estop_active" ? "warn" : "info", formatBackendState("Выполнение", message.payload.group_name, message.payload.status, message.payload.message));
       applyRemoteExecutionState(message.payload.status);
       return;
     case "fault_state":
@@ -259,10 +277,32 @@ function handleRobotMessage(message: RobotProtocolMessage) {
       if (message.payload.active) {
         robotConnectionError.value = message.payload.message;
       }
+      pushBackendLog(message.payload.severity === "error" ? "error" : message.payload.severity === "warning" ? "warn" : "info", `Fault: ${message.payload.message}`);
       return;
     default:
       return;
   }
+}
+
+function pushBackendLog(level: BackendLogLevel, text: string) {
+  robotBackendStatus.value = text;
+  const previous = robotBackendLog.value[0];
+  if (previous && previous.text === text && previous.level === level) {
+    robotBackendLog.value = [
+      { ...previous, timestamp: Date.now() },
+      ...robotBackendLog.value.slice(1),
+    ];
+    return;
+  }
+  robotBackendLog.value = [
+    { timestamp: Date.now(), level, text },
+    ...robotBackendLog.value,
+  ].slice(0, 6);
+}
+
+function formatBackendState(scope: string, groupName: RobotGroupName, status: string, message: string) {
+  const groupLabel = groupName === "arm" ? "Рука" : "Захват";
+  return `${scope}: ${groupLabel} -> ${status}${message ? ` — ${message}` : ""}`;
 }
 
 function queueRemoteJointState(groupName: RobotGroupName, jointNames: string[], positionsRad: number[]) {

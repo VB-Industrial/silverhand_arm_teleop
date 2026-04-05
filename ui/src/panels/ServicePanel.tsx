@@ -1,3 +1,4 @@
+import { useState } from "preact/hooks";
 import {
   appState,
   finishExecution,
@@ -9,6 +10,8 @@ import {
 } from "../store/appState";
 import {
   connectRobot,
+  robotBackendLog,
+  robotBackendStatus,
   disconnectRobot,
   reconnectRobot,
   robotConnectionError,
@@ -18,12 +21,21 @@ import {
 } from "../transport/robotConnectionStore";
 
 export function ServicePanel() {
+  const [collapsed, setCollapsed] = useState(false);
+
   return (
-    <section className="panel service-bar">
+    <section className={collapsed ? "panel service-bar service-bar-collapsed" : "panel service-bar"}>
       <div className="service-bar-label">
         <span className="section-overline">Сервис</span>
         <strong>Mock, отладка и сеть</strong>
       </div>
+      <div className="service-bar-toggle">
+        <button className="secondary-action" onClick={() => setCollapsed((value) => !value)} type="button">
+          {collapsed ? "Показать отладочную панель" : "Скрыть отладочную панель"}
+        </button>
+      </div>
+      {!collapsed ? (
+        <>
       <div className="service-actions">
         <label className="service-url-input">
           <span>WS</span>
@@ -85,7 +97,20 @@ export function ServicePanel() {
           {safetyState.value.noFaults ? "Сымитировать fault" : "Сбросить fault"}
         </button>
       </div>
-      {robotConnectionError.value ? <span className="service-status-text">{robotConnectionError.value}</span> : null}
+      <div className="service-status-block">
+        <span className="service-status-text">{robotConnectionError.value || robotBackendStatus.value || "Статус backend появится после первого события."}</span>
+        {robotBackendLog.value.length > 0 ? (
+          <div className="service-status-log">
+            {robotBackendLog.value.map((entry) => (
+              <div className={`service-log-entry service-log-entry-${entry.level}`} key={`${entry.timestamp}-${entry.text}`}>
+                {entry.text}
+              </div>
+            ))}
+          </div>
+        ) : null}
+      </div>
+        </>
+      ) : null}
     </section>
   );
 }
