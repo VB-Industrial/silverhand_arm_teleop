@@ -25,6 +25,7 @@ type KinematicSceneProps = {
   interactionMode: "idle" | "servo_joystick" | "servo_gripper" | "planner_gizmo" | "planner_joint" | "planner_tcp";
   onTcpPositionChange?: (positions: { real: [number, number, number]; target: [number, number, number] }) => void;
   onInitialTargetSync?: (position: [number, number, number], quaternion: OrientationQuaternion) => void;
+  onRealJointPoseSync?: (position: [number, number, number], quaternion: OrientationQuaternion) => void;
   onTargetJointPoseSync?: (position: [number, number, number], quaternion: OrientationQuaternion) => void;
   onConsumeGizmoWristPreset?: () => void;
   onTargetQuaternionChange?: (quaternion: OrientationQuaternion) => void;
@@ -84,11 +85,11 @@ export function KinematicScene(props: KinematicSceneProps) {
     }
 
     const scene = new THREE.Scene();
-    scene.background = null;
+    scene.background = new THREE.Color(0x11161c);
 
     const renderer = new THREE.WebGLRenderer({
       antialias: true,
-      alpha: true,
+      alpha: false,
     });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -345,21 +346,6 @@ export function KinematicScene(props: KinematicSceneProps) {
         return;
       }
 
-      const latest = latestPropsRef.current;
-      if (!gizmoGrabPresetAppliedRef.current) {
-        primeGizmoGrabPreset(
-          sceneRefs.current,
-          latest.targetJoints,
-          latest.targetGripperPercent,
-          latest.gizmoWristPresetArmed,
-          latest.targetQuaternion,
-          latest.onConsumeGizmoWristPreset,
-          latest.onTargetQuaternionChange,
-          syncingGizmoRef,
-        );
-        gizmoGrabPresetAppliedRef.current = true;
-      }
-
       const cameraDirection = new THREE.Vector3();
       camera.getWorldDirection(cameraDirection);
       dragPlane.setFromNormalAndCoplanarPoint(cameraDirection, gizmoAnchor.position.clone());
@@ -574,6 +560,18 @@ export function KinematicScene(props: KinematicSceneProps) {
       props.realGripperPercent,
       props.targetGripperPercent,
     );
+    if (sceneRefs.current.armBase && sceneRefs.current.realTool) {
+      const realPosition = tcpPositionInReferenceFrame(
+        sceneRefs.current.armBase,
+        sceneRefs.current.realTool,
+        sceneRefs.current.realLeftFinger,
+        sceneRefs.current.realRightFinger,
+      );
+      const realToolQuaternion = new THREE.Quaternion();
+      sceneRefs.current.realTool.getWorldQuaternion(realToolQuaternion);
+      const realQuaternion = tcpQuaternionFromWorld(sceneRefs.current.armBase, realToolQuaternion);
+      props.onRealJointPoseSync?.(realPosition, realQuaternion);
+    }
     emitTcpPositions(sceneRefs.current, latestPropsRef.current.onTcpPositionChange);
   }, [props.realJoints, props.targetJoints, props.realGripperPercent, props.targetGripperPercent]);
 

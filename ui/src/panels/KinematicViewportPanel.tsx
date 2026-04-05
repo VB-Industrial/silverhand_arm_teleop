@@ -9,6 +9,7 @@ import {
   previewTarget,
   realTarget,
   setControlMode,
+  syncRealTcpPoseFromModel,
   syncPreviewTcpPoseFromModel,
   syncTcpPoseFromModel,
   updateTcpQuaternionFromGizmo,
@@ -53,6 +54,7 @@ export function KinematicViewportPanel() {
           interactionMode={interactionMode.value}
           onTcpPositionChange={setTcpPosition}
           onInitialTargetSync={syncTcpPoseFromModel}
+          onRealJointPoseSync={syncRealTcpPoseFromModel}
           onTargetJointPoseSync={syncPreviewTcpPoseFromModel}
           onConsumeGizmoWristPreset={consumeGizmoWristPreset}
           onTargetQuaternionChange={updateTcpQuaternionFromGizmo}

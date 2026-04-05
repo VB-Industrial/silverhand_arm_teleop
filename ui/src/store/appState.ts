@@ -281,6 +281,37 @@ export function syncPreviewTcpPoseFromModel(
   }
 }
 
+export function syncRealTcpPoseFromModel(
+  position: [number, number, number],
+  quaternion: OrientationQuaternion,
+): void {
+  const normalizedQuaternion = normalizeQuaternion(quaternion);
+  const currentReal = realTarget.value;
+  const sameRealPosition =
+    Math.abs(currentReal.tcp[0] - position[0]) < 0.0005 &&
+    Math.abs(currentReal.tcp[1] - position[1]) < 0.0005 &&
+    Math.abs(currentReal.tcp[2] - position[2]) < 0.0005;
+  const sameRealQuaternion = currentReal.orientationQuaternion.every(
+    (value, index) => Math.abs(value - normalizedQuaternion[index]) < 0.0005,
+  );
+
+  if (sameRealPosition && sameRealQuaternion) {
+    return;
+  }
+
+  const nextReal = cloneTarget(realTarget.value);
+  nextReal.tcp[0] = position[0];
+  nextReal.tcp[1] = position[1];
+  nextReal.tcp[2] = position[2];
+  nextReal.orientationQuaternion = normalizedQuaternion;
+  syncEulerReadout(nextReal);
+  realTarget.value = nextReal;
+
+  if (appState.value === "idle") {
+    previewTarget.value = cloneTarget(nextReal);
+  }
+}
+
 export function setTcpOrientationRate(index: 3 | 4 | 5, value: number): void {
   if (editingDisabled.value) {
     return;
@@ -362,8 +393,10 @@ export function finishExecution(): void {
 }
 
 export function completeRemoteExecution(): void {
+  previewTarget.value = cloneTarget(realTarget.value);
   lockedTarget.value = null;
   interactionMode.value = "idle";
+  gripperGoalPercent.value = realTarget.value.gripper;
   appState.value = "idle";
 }
 
