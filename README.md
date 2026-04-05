@@ -1,130 +1,57 @@
 # silverhand_arm_teleop
 
-Teleop + GUI for the SilverHand rover-mounted manipulator.
+Web GUI and teleoperation frontend for the SilverHand rover-mounted arm.
 
-## Dependencies
+Текущее состояние:
+- локальный `preview IK` и kinematic scene
+- управление рукой через `joint` и `TCP/gizmo`
+- управление захватом
+- websocket transport к robot-side gateway
+- работа как с direct `ros2_control`, так и с `MoveIt`, если это скрыто за `ws_gateway`
 
-### System packages
+## Что нужно
 
-Required on Ubuntu:
+- Ubuntu 24.04
+- Node.js + npm
+- ROS 2 Jazzy
 
-```bash
-sudo apt-get update
-sudo apt-get install -y nodejs npm
-```
-
-### ROS 2 and xacro
-
-The current setup expects ROS 2 Jazzy and `xacro` to be available:
-
-```bash
-source /opt/ros/jazzy/setup.bash
-which xacro
-```
-
-If `xacro` is missing:
+Минимум:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y ros-jazzy-xacro
+sudo apt-get install -y nodejs npm ros-jazzy-xacro
 ```
 
-### Local source repositories
-
-The UI currently consumes robot descriptions from these local repos:
-
-- `/home/r/silver_ws/src/silverhand_rover_control`
-- `/home/r/silver_ws/src/silverhand_ros2`
-
-In particular it uses:
-
-- `/home/r/silver_ws/src/silverhand_rover_control/silverhand_rover_description`
-- `/home/r/silver_ws/src/silverhand_ros2/silverhand_arm_description`
-
-## UI dependencies
-
-Install JavaScript dependencies:
+## Зависимости UI
 
 ```bash
 cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
 npm install
 ```
 
-Current npm packages:
+## Ассеты модели
 
-- `preact`
-- `@preact/signals`
-- `three`
-- `urdf-loader`
-- `typescript`
-- `vite`
-- `@preact/preset-vite`
-- `@types/three`
+GUI использует уже подготовленные ассеты из:
 
-## Prepare URDF and mesh assets
+- `ui/public/assets/system/urdf/silverhand_system.urdf`
+- `ui/public/assets/rover/...`
+- `ui/public/assets/arm/...`
 
-The current kinematic viewport uses copied mesh assets and a generated rover URDF.
+Если модели/URDF были изменены, ассеты нужно регенерировать отдельно. В обычном сценарии разработки этого делать не требуется на каждый запуск.
 
-Run:
+## Запуск GUI
 
-```bash
-source /opt/ros/jazzy/setup.bash
-export ROS_PACKAGE_PATH=/home/r/silver_ws/src/silverhand_rover_control:/home/r/silver_ws/src/silverhand_ros2:$ROS_PACKAGE_PATH
-
-mkdir -p /home/r/silver_ws/src/silverhand_arm_teleop/ui/public/assets/rover/urdf
-mkdir -p /home/r/silver_ws/src/silverhand_arm_teleop/ui/public/assets/rover/meshes
-mkdir -p /home/r/silver_ws/src/silverhand_arm_teleop/ui/public/assets/arm/urdf
-mkdir -p /home/r/silver_ws/src/silverhand_arm_teleop/ui/public/assets/arm/meshes
-
-xacro \
-  /home/r/silver_ws/src/silverhand_rover_control/silverhand_rover_description/urdf/silverhand_rover_model.urdf.xacro \
-  > /home/r/silver_ws/src/silverhand_arm_teleop/ui/public/assets/rover/urdf/silverhand_rover.urdf
-
-cp /home/r/silver_ws/src/silverhand_rover_control/silverhand_rover_description/meshes/* \
-  /home/r/silver_ws/src/silverhand_arm_teleop/ui/public/assets/rover/meshes/
-
-cp /home/r/silver_ws/src/silverhand_ros2/silverhand_arm_description/urdf/silverhand.urdf \
-  /home/r/silver_ws/src/silverhand_arm_teleop/ui/public/assets/arm/urdf/silverhand.urdf
-
-cp /home/r/silver_ws/src/silverhand_ros2/silverhand_arm_description/meshes/* \
-  /home/r/silver_ws/src/silverhand_arm_teleop/ui/public/assets/arm/meshes/
-```
-
-## Run UI
-
-### Development server
-
-Start the local Vite dev server:
+### Режим разработки
 
 ```bash
 cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
 npm run dev -- --host 0.0.0.0 --port 4173
 ```
 
-Then open:
+Открыть:
 
 - `http://localhost:4173/`
-- or from another machine on the same network:
-  - `http://<YOUR_HOST_IP>:4173/`
-
-Notes:
-
-- You do not need to rebuild after every edit while the dev server is running.
-- For files like `ui/src/kinematics/analyticIk.ts`, just save and refresh the page.
-
-### Development server on another port
-
-If port `4173` is busy, use another one, for example `4174`:
-
-```bash
-cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
-npm run dev -- --host 0.0.0.0 --port 4174
-```
-
-Then open:
-
-- `http://localhost:4174/`
-- or `http://<YOUR_HOST_IP>:4174/`
+- или `http://<YOUR_HOST_IP>:4173/`
 
 ### Production build
 
@@ -133,12 +60,164 @@ cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
 npm run build
 ```
 
-### Local preview of production build
+### Запуск собранного UI без Vite
 
-If you want to preview the built bundle locally:
+В репозитории есть helper-скрипт:
+
+```bash
+cd /home/r/silver_ws/src/silverhand_arm_teleop
+./silverhand_arm_teleop_start.sh
+```
+
+По умолчанию он поднимает статическую раздачу на:
+
+- `http://0.0.0.0:4173`
+
+Можно переопределить:
+
+```bash
+HOST=0.0.0.0 PORT=4174 ./silverhand_arm_teleop_start.sh
+```
+
+## systemd
+
+Для GUI есть user-service:
+
+- `systemd/user/silverhand-arm-teleop.service`
+
+Установка:
+
+```bash
+mkdir -p ~/.config/systemd/user
+cp /home/r/silver_ws/src/silverhand_arm_teleop/systemd/user/silverhand-arm-teleop.service ~/.config/systemd/user/
+systemctl --user daemon-reload
+```
+
+Перед запуском сервиса UI должен быть собран:
 
 ```bash
 cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
+npm install
 npm run build
-npm run preview -- --host 0.0.0.0 --port 4173
+```
+
+Запуск:
+
+```bash
+systemctl --user enable --now silverhand-arm-teleop.service
+```
+
+Автозапуск на старте системы:
+
+```bash
+loginctl enable-linger "$USER"
+```
+
+Полезные команды:
+
+```bash
+systemctl --user status silverhand-arm-teleop.service
+journalctl --user -u silverhand-arm-teleop.service -f
+systemctl --user restart silverhand-arm-teleop.service
+```
+
+## Подключение к роботу
+
+GUI сам по себе не ходит в ROS напрямую. Он подключается к robot-side websocket gateway.
+
+URL задаётся в сервисной панели, типичный пример:
+
+```text
+ws://192.168.0.100:8765
+```
+
+Внизу сервисной панели сейчас показываются:
+
+- текущее состояние backend
+- несколько последних status/fault сообщений
+
+Это основной способ быстро понять:
+
+- дошёл ли goal
+- что вернул `MoveIt`
+- есть ли fault / stop / estop
+
+## Типовые сценарии
+
+### 1. Локальный GUI + удалённый robot-side gateway
+
+Самый частый режим:
+
+1. На robot machine поднимаются:
+   - `silverhand_system_bringup`
+   - `silverhand_arm_ws_gateway`
+2. Здесь запускается только GUI.
+3. В GUI указывается `ws://<robot-ip>:8765`.
+
+### 2. Полностью локальный smoke test
+
+Для smoke/test режима можно поднять:
+
+- `silverhand_arm_ws_gateway --mode mock`
+
+и подключить GUI к:
+
+```text
+ws://127.0.0.1:8765
+```
+
+## Что уже стабильно работает
+
+- preview IK с учётом бокового оффсета плеча
+- `gizmo` в TCP цели
+- `ghost target` в кинематической сцене
+- сглаживание входящих `joint_state` из websocket
+- service log внизу панели
+
+## Связанные пакеты
+
+Robot-side часть живёт отдельно:
+
+- [silverhand_system_bringup](/home/r/silver_ws/src/silverhand_system_bringup)
+- [silverhand_arm_ws_gateway](/home/r/silver_ws/src/silverhand_arm_ws_gateway)
+
+Именно там запускаются:
+
+- direct `ros2_control`
+- `MoveIt`
+- websocket bridge к GUI
+
+## Быстрый guide по systemd
+
+Общая схема для всех сервисов в проекте одинаковая:
+
+1. Собрать workspace:
+
+```bash
+cd ~/silver_ws
+source /opt/ros/jazzy/setup.bash
+colcon build
+```
+
+2. Положить нужный `.service` или template в `~/.config/systemd/user/`
+3. Выполнить:
+
+```bash
+systemctl --user daemon-reload
+loginctl enable-linger "$USER"
+```
+
+4. Включить нужный сервис:
+
+```bash
+systemctl --user enable --now silverhand-arm-teleop.service
+systemctl --user enable --now silverhand-ws-gateway@moveit.service
+systemctl --user enable --now silverhand-system-bringup@arm_hand_moveit_mock.service
+```
+
+5. Смотреть статус и логи:
+
+```bash
+systemctl --user status silverhand-ws-gateway@moveit.service
+journalctl --user -u silverhand-ws-gateway@moveit.service -f
 ```
