@@ -1,15 +1,15 @@
 import type { CameraConfig, CameraId } from "./cameraTypes";
 
-function envValue(key: string): string {
-  const value = import.meta.env[key];
-  return typeof value === "string" ? value.trim() : "";
-}
+// function envValue(key: string): string {
+//   const value = import.meta.env[key];
+//   return typeof value === "string" ? value.trim() : "";
+// }
 
 export const cameraConfigs: CameraConfig[] = [
   {
     id: "driver",
     title: "Камера водителя",
-    whepUrl: envValue("VITE_CAMERA_DRIVER_WHEP_URL"),
+    whepUrl: 'http://192.168.20.20:8889/stream1/whep',
     enabledByDefault: true,
     optional: false,
     reconnectDelayMs: 2000,
@@ -19,7 +19,7 @@ export const cameraConfigs: CameraConfig[] = [
   {
     id: "wrist",
     title: "Камера на манипуляторе",
-    whepUrl: envValue("VITE_CAMERA_WRIST_WHEP_URL"),
+    whepUrl: 'http://192.168.20.20:8889/stream2/whep',
     enabledByDefault: true,
     optional: false,
     reconnectDelayMs: 2000,
@@ -29,7 +29,7 @@ export const cameraConfigs: CameraConfig[] = [
   {
     id: "diagonal",
     title: "Диагональная камера ровера",
-    whepUrl: envValue("VITE_CAMERA_DIAGONAL_WHEP_URL"),
+    whepUrl: 'http://192.168.20.20:8889/stream3/whep',
     enabledByDefault: true,
     optional: false,
     reconnectDelayMs: 2000,
@@ -39,7 +39,7 @@ export const cameraConfigs: CameraConfig[] = [
   {
     id: "front_hemi",
     title: "Передняя полусфера",
-    whepUrl: envValue("VITE_CAMERA_FRONT_HEMI_WHEP_URL"),
+    whepUrl: 'http://192.168.20.20:8889/stream4/whep',
     enabledByDefault: true,
     optional: false,
     reconnectDelayMs: 2500,

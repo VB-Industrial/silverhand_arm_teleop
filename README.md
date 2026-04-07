@@ -12,14 +12,40 @@ Web GUI and teleoperation frontend for the SilverHand rover-mounted arm.
 ## Что нужно
 
 - Ubuntu 24.04
-- Node.js + npm
+- Node.js + npm (Node **20.19+** или **22.12+**, иначе `vite` не соберётся)
 - ROS 2 Jazzy
 
 Минимум:
 
 ```bash
 sudo apt-get update
-sudo apt-get install -y nodejs npm ros-jazzy-xacro
+sudo apt-get install -y ros-jazzy-xacro
+```
+
+Node.js (рекомендуется через `nvm`, чтобы не зависеть от версии из `apt`):
+
+```bash
+curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+source ~/.bashrc
+nvm install 22
+nvm use 22
+node -v
+```
+
+Если нужен **системный** Node.js (через `apt`, требует root), ставьте Node 22 из репозитория NodeSource:
+
+```bash
+sudo apt-get update
+sudo apt-get install -y ca-certificates curl gnupg
+
+sudo mkdir -p /etc/apt/keyrings
+curl -fsSL https://deb.nodesource.com/gpgkey/nodesource-repo.gpg.key -o /tmp/nodesource.gpg.key
+sudo gpg --dearmor -o /etc/apt/keyrings/nodesource.gpg /tmp/nodesource.gpg.key
+
+echo "deb [signed-by=/etc/apt/keyrings/nodesource.gpg] https://deb.nodesource.com/node_22.x nodistro main" | sudo tee /etc/apt/sources.list.d/nodesource.list
+sudo apt-get update
+sudo apt-get install -y nodejs
+node -v
 ```
 
 ## Зависимости UI
