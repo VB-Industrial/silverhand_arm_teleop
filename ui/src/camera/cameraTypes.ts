@@ -1,6 +1,6 @@
-export type CameraId = "driver" | "wrist" | "diagonal" | "front_hemi";
+export type CameraId = "driver" | "wrist" | "front_hemi";
 
-export type CameraTone = "driver" | "wrist" | "diagonal" | "auxiliary";
+export type CameraTone = "driver" | "wrist" | "auxiliary";
 
 export type CameraStatus =
   | "idle"

@@ -4,10 +4,9 @@ import {
   canReset,
   canStop,
   estopActive,
-  interactionMode,
   resetState,
 } from "../store/appState";
-import { translateInteractionMode, translateState } from "../app/viewModel";
+import { translateState } from "../app/viewModel";
 import { sendEstopToRobot, sendLockedTargetToRobot, sendResetEstopToRobot, sendStopToRobot } from "../transport/robotConnectionStore";
 
 export function ExecutePanel() {
@@ -16,11 +15,6 @@ export function ExecutePanel() {
       <div className="panel-head">
         <h2>Управление движением</h2>
         <span className="muted-text">{translateState(appState.value)}</span>
-      </div>
-
-      <div className="execution-summary">
-        <span className="summary-label">Текущий контур</span>
-        <strong className="summary-value">{translateInteractionMode(interactionMode.value)}</strong>
       </div>
 
       <div className="execution-actions">
