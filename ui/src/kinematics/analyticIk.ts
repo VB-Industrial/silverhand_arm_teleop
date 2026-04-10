@@ -19,7 +19,10 @@ export function solveAnalyticIkPreview(targetPose: TcpPose, options: SolveAnalyt
     };
   }
 
-  const candidates = normalizeCandidates(options.solver(targetPose));
+  const candidates = normalizeCandidates([
+    ...buildCurrentSeedCandidates(targetPose, options.currentJointsDeg),
+    ...options.solver(targetPose),
+  ]);
 
   if (candidates.length === 0) {
     return {
@@ -53,6 +56,27 @@ export function solveAnalyticIkPreview(targetPose: TcpPose, options: SolveAnalyt
 
 function normalizeCandidates(candidates: AnalyticIkCandidate[]): AnalyticIkCandidate[] {
   return candidates.filter((candidate) => candidate.jointsDeg.length === 6);
+}
+
+function buildCurrentSeedCandidates(targetPose: TcpPose, currentJointsDeg: JointVector): AnalyticIkCandidate[] {
+  const targetRotation = rotationMatrixFromQuaternion(targetPose.orientationQuaternion);
+  const targetPosition = {
+    x: targetPose.position.x,
+    y: targetPose.position.y,
+    z: targetPose.position.z,
+  };
+  const seed = currentJointsDeg.map(degToRad) as JointVector;
+  const refined = refineFullPoseNumerically(targetPosition, targetRotation, seed);
+  if (!refined) {
+    return [];
+  }
+
+  return [
+    {
+      jointsDeg: refined.map(radToDeg) as JointVector,
+      branchId: "elbow_up_current_seed",
+    },
+  ];
 }
 
 export function createPaperAnalyticIkSolver(geometry: PaperDhGeometry = PAPER_DH_GEOMETRY_METERS): AnalyticIkSolver {
@@ -200,8 +224,8 @@ function refineFullPoseNumerically(
 function rotation03Urdf(theta1: number, theta2: number, theta3: number): Matrix3 {
   const root = rotationMatrixFromRpyRad(0, 0, 1.5708);
   const j1 = multiplyMatrix3(rotationMatrixFromRpyRad(Math.PI, 0, 0), rotationAroundAxis([0, 0, -1], theta1));
-  const j2 = multiplyMatrix3(rotationMatrixFromRpyRad(1.5708, -1.0472, -1.5708), rotationAroundAxis([0, 0, -1], theta2));
-  const j3 = multiplyMatrix3(rotationMatrixFromRpyRad(0, 0, 2.0708), rotationAroundAxis([0, 0, -1], theta3));
+  const j2 = multiplyMatrix3(rotationMatrixFromRpyRad(1.5708, -0.894, -1.57), rotationAroundAxis([0, 0, -1], theta2));
+  const j3 = multiplyMatrix3(rotationMatrixFromRpyRad(0, 0, 2.3588), rotationAroundAxis([0, 0, -1], theta3));
   return multiplyMatrix3(multiplyMatrix3(multiplyMatrix3(root, j1), j2), j3);
 }
 
@@ -309,8 +333,8 @@ function numericalWristJacobian(
 
 function wristRotationUrdf(q4: number, q5: number, q6: number): Matrix3 {
   const j4 = multiplyMatrix3(rotationMatrixFromRpyRad(1.5708, -1.2554, -1.5708), rotationAroundAxis([0, 0, -1], q4));
-  const j5 = multiplyMatrix3(rotationMatrixFromRpyRad(1.5708, 0, -2.8262), rotationAroundAxis([1, 0, 0], q5));
-  const j6 = multiplyMatrix3(rotationMatrixFromRpyRad(0, 0, -1.5708), rotationAroundAxis([0, 0, 1], q6));
+  const j5 = multiplyMatrix3(rotationMatrixFromRpyRad(3.14, 0, -2.8262), rotationAroundAxis([1, 0, 0], q5));
+  const j6 = multiplyMatrix3(rotationMatrixFromRpyRad(0, 0, 0), rotationAroundAxis([0, 0, 1], q6));
   return multiplyMatrix3(multiplyMatrix3(j4, j5), j6);
 }
 
@@ -320,14 +344,14 @@ function tcpPoseFromJointsUrdf(joints: JointVector): {
 } {
   let transform = identityTransform4();
   transform = multiplyTransform4(transform, transformFromRpyTranslation(0, 0, 1.5708, 0, 0, 0));
-  transform = multiplyTransform4(transform, jointTransformFromUrdf(Math.PI, 0, 0, 0, 0, 0.003445, [0, 0, -1], joints[0]));
+  transform = multiplyTransform4(transform, jointTransformFromUrdf(Math.PI, 0, 0, 0, 0, 0, [0, 0, -1], joints[0]));
   transform = multiplyTransform4(
     transform,
-    jointTransformFromUrdf(1.5708, -1.0472, -1.5708, 0, 0.064146, -0.16608, [0, 0, -1], joints[1]),
+    jointTransformFromUrdf(1.5708, -0.894, -1.57, 0, 0.064146, -0.16608, [0, 0, -1], joints[1]),
   );
   transform = multiplyTransform4(
     transform,
-    jointTransformFromUrdf(0, 0, 2.0708, 0.1525, -0.26414, 0, [0, 0, -1], joints[2]),
+    jointTransformFromUrdf(0, 0, 2.3588, 0.1525, -0.26414, 0, [0, 0, -1], joints[2]),
   );
   transform = multiplyTransform4(
     transform,
@@ -335,11 +359,11 @@ function tcpPoseFromJointsUrdf(joints: JointVector): {
   );
   transform = multiplyTransform4(
     transform,
-    jointTransformFromUrdf(1.5708, 0, -2.8262, 0, 0, -0.22225, [1, 0, 0], joints[4]),
+    jointTransformFromUrdf(3.14, 0, -2.8262, 0, 0, -0.22225, [1, 0, 0], joints[4]),
   );
   transform = multiplyTransform4(
     transform,
-    jointTransformFromUrdf(0, 0, -1.5708, -0.000294, 0, 0.02117, [0, 0, 1], joints[5]),
+    jointTransformFromUrdf(0, 0, 0, 0, 0, 0.02117, [0, 0, 1], joints[5]),
   );
   transform = multiplyTransform4(transform, transformFromRpyTranslation(0, 0, 0, 0, 0, 0.0642));
 
@@ -392,12 +416,12 @@ function numericalFullPoseJacobian(
 }
 
 function solveLeastSquares6x6(jacobianColumns: number[][], error: [number, number, number, number, number, number]): number[] | null {
-  const jt = transposeRectangular(jacobianColumns);
-  const jtj = multiplyRectangular(jt, jacobianColumns);
+  const jacobianRows = transposeRectangular(jacobianColumns);
+  const jtj = multiplyRectangular(jacobianColumns, jacobianRows);
   for (let i = 0; i < 6; i += 1) {
     jtj[i][i] += 1e-4;
   }
-  const jte = multiplyRectangularVector(jt, error);
+  const jte = multiplyRectangularVector(jacobianColumns, error);
   return solveLinearSystem(jtj, jte);
 }
 
@@ -669,6 +693,10 @@ function dedupeCandidates(candidates: AnalyticIkCandidate[]): AnalyticIkCandidat
 
 function radToDeg(value: number): number {
   return (value * 180) / Math.PI;
+}
+
+function degToRad(value: number): number {
+  return (value * Math.PI) / 180;
 }
 
 function wrapToPi(value: number): number {
