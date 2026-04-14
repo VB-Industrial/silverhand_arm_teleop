@@ -107,16 +107,15 @@ HOST=0.0.0.0 PORT=4174 ./silverhand_arm_teleop_start.sh
 
 ## systemd
 
-Для GUI есть user-service:
+System service:
 
-- `systemd/user/silverhand-arm-teleop.service`
+- `systemd/system/silverhand-arm-teleop.service`
 
 Установка:
 
 ```bash
-mkdir -p ~/.config/systemd/user
-cp /home/r/silver_ws/src/silverhand_arm_teleop/systemd/user/silverhand-arm-teleop.service ~/.config/systemd/user/
-systemctl --user daemon-reload
+sudo install -Dm644 /home/r/silver_ws/src/silverhand_arm_teleop/systemd/system/silverhand-arm-teleop.service /etc/systemd/system/silverhand-arm-teleop.service
+sudo systemctl daemon-reload
 ```
 
 Перед запуском сервиса UI должен быть собран:
@@ -130,21 +129,17 @@ npm run build
 Запуск:
 
 ```bash
-systemctl --user enable --now silverhand-arm-teleop.service
+sudo systemctl enable --now silverhand-arm-teleop.service
 ```
 
-Автозапуск на старте системы:
-
-```bash
-loginctl enable-linger "$USER"
-```
+Автозапуск на старте системы уже обеспечивается systemd.
 
 Полезные команды:
 
 ```bash
-systemctl --user status silverhand-arm-teleop.service
-journalctl --user -u silverhand-arm-teleop.service -f
-systemctl --user restart silverhand-arm-teleop.service
+systemctl status silverhand-arm-teleop.service
+journalctl -u silverhand-arm-teleop.service -f
+sudo systemctl restart silverhand-arm-teleop.service
 ```
 
 ## Подключение к роботу
@@ -225,25 +220,24 @@ source /opt/ros/jazzy/setup.bash
 colcon build
 ```
 
-2. Положить нужный `.service` или template в `~/.config/systemd/user/`
+2. Положить нужный `.service` или template в `~/.config/systemd/system/`
 3. Выполнить:
 
 ```bash
-systemctl --user daemon-reload
-loginctl enable-linger "$USER"
+sudo systemctl daemon-reload
 ```
 
 4. Включить нужный сервис:
 
 ```bash
-systemctl --user enable --now silverhand-arm-teleop.service
-systemctl --user enable --now silverhand-ws-gateway@moveit.service
-systemctl --user enable --now silverhand-system-bringup@arm_hand_moveit_mock.service
+sudo systemctl enable --now silverhand-arm-teleop.service
+sudo systemctl enable --now silverhand-ws-gateway@moveit.service
+sudo systemctl enable --now silverhand-system-bringup@arm_hand_moveit_mock.service
 ```
 
 5. Смотреть статус и логи:
 
 ```bash
-systemctl --user status silverhand-ws-gateway@moveit.service
-journalctl --user -u silverhand-ws-gateway@moveit.service -f
+systemctl status silverhand-ws-gateway@moveit.service
+journalctl -u silverhand-ws-gateway@moveit.service -f
 ```

@@ -6,6 +6,8 @@ Requires=ethernet-can.service
 After=ethernet-can.service
 
 [Service]
+User=voltbro
+Group=voltbro
 Type=simple
 WorkingDirectory=%h/silver_ws/src/silverhand_arm_teleop
 Environment=HOST=0.0.0.0
@@ -18,4 +20,4 @@ KillSignal=SIGINT
 TimeoutStopSec=10
 
 [Install]
-WantedBy=default.target
+WantedBy=multi-user.target
