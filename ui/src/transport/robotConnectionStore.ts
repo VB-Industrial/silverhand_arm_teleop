@@ -25,8 +25,9 @@ export type BackendLogEntry = {
 };
 
 const STORAGE_KEY = "silverhand.robot_ws_url";
-const DEFAULT_URL = (import.meta.env as { VITE_ROBOT_WS_URL?: string }).VITE_ROBOT_WS_URL ?? "ws://127.0.0.1:8765";
+const DEFAULT_URL = (import.meta.env as { VITE_ROBOT_WS_URL?: string }).VITE_ROBOT_WS_URL ?? "ws://192.168.20.5:8765";
 const HEARTBEAT_INTERVAL_MS = 3000;
+const RECONNECT_INTERVAL_MS = 30000;
 
 export const robotConnectionUrl = signal(readInitialUrl());
 export const robotConnectionState = signal<ConnectionState>("disconnected");
@@ -39,6 +40,7 @@ export const robotBackendLog = signal<BackendLogEntry[]>([]);
 
 let client: RobotSocketClient | null = null;
 let heartbeatTimer = 0;
+let reconnectTimer: ReturnType<typeof window.setTimeout> | null = null;
 let heartbeatCounter = 1;
 let manuallyDisconnected = false;
 let pendingJointStateFrame = 0;
@@ -66,6 +68,7 @@ export function connectRobot() {
   }
 
   disconnectRobot(false);
+  clearReconnectTimer();
   manuallyDisconnected = false;
   robotConnectionState.value = "connecting";
   robotConnectionError.value = "";
@@ -73,6 +76,7 @@ export function connectRobot() {
 
   client = new RobotSocketClient(url, {
     onOpen: () => {
+      clearReconnectTimer();
       robotConnectionState.value = "connected";
       robotConnectionError.value = "";
       setConnectionReady(true);
@@ -87,6 +91,7 @@ export function connectRobot() {
       if (!manuallyDisconnected) {
         robotConnectionError.value = "Соединение закрыто.";
         pushBackendLog("warn", "Соединение с роботом закрыто.");
+        scheduleReconnect();
       } else {
         pushBackendLog("info", "WS отключён вручную.");
       }
@@ -96,6 +101,9 @@ export function connectRobot() {
       robotConnectionError.value = "Ошибка websocket.";
       setConnectionReady(false);
       pushBackendLog("error", "Ошибка websocket.");
+      if (!manuallyDisconnected) {
+        scheduleReconnect();
+      }
     },
     onMessage: handleRobotMessage,
   });
@@ -106,6 +114,7 @@ export function connectRobot() {
 export function disconnectRobot(manual = true) {
   manuallyDisconnected = manual;
   stopHeartbeat();
+  clearReconnectTimer();
   client?.disconnect();
   client = null;
   setConnectionReady(false);
@@ -117,6 +126,25 @@ export function disconnectRobot(manual = true) {
 
 export function reconnectRobot() {
   connectRobot();
+}
+
+function clearReconnectTimer() {
+  if (reconnectTimer !== null) {
+    window.clearTimeout(reconnectTimer);
+    reconnectTimer = null;
+  }
+}
+
+function scheduleReconnect() {
+  if (manuallyDisconnected || reconnectTimer !== null) {
+    return;
+  }
+
+  reconnectTimer = window.setTimeout(() => {
+    reconnectTimer = null;
+    connectRobot();
+  }, RECONNECT_INTERVAL_MS);
+  pushBackendLog("warn", "Повторная попытка подключения через 30 секунд.");
 }
 
 export function sendLockedTargetToRobot() {
@@ -364,7 +392,12 @@ function stopHeartbeat() {
 }
 
 function readInitialUrl() {
-  return localStorage.getItem(STORAGE_KEY) ?? DEFAULT_URL;
+  const saved = localStorage.getItem(STORAGE_KEY)?.trim();
+  if (!saved || saved === "ws://127.0.0.1:8765" || saved === "ws://localhost:8765") {
+    localStorage.setItem(STORAGE_KEY, DEFAULT_URL);
+    return DEFAULT_URL;
+  }
+  return saved;
 }
 
 function createCommandId(prefix: string) {
