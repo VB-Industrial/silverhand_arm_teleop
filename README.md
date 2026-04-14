@@ -1,15 +1,15 @@
 # silverhand_arm_teleop
 
-Web GUI and teleoperation frontend for the SilverHand rover-mounted arm.
+Веб-UI и телепульт для установленной на rover руки SilverHand.
 
 Текущее состояние:
-- локальный `preview IK` и kinematic scene
+- локальный `preview IK` и кинематическая сцена
 - управление рукой через `joint` и `TCP/gizmo`
 - управление захватом
-- websocket transport к robot-side gateway
-- работа как с direct `ros2_control`, так и с `MoveIt`, если это скрыто за `ws_gateway`
+- передача по websocket к шлюзу на стороне робота
+- работа как с непосредственным `ros2_control`, так и с `MoveIt`, если это скрыто за `ws_gateway`
 
-## Что нужно
+## Требования
 
 - Ubuntu 24.04
 - Node.js + npm (Node **20.19+** или **22.12+**, иначе `vite` не соберётся)
@@ -51,7 +51,7 @@ node -v
 ## Зависимости UI
 
 ```bash
-cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
+cd ~/silver_ws/src/silverhand_arm_teleop/ui
 npm install
 ```
 
@@ -70,7 +70,7 @@ GUI использует уже подготовленные ассеты из:
 ### Режим разработки
 
 ```bash
-cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
+cd ~/silver_ws/src/silverhand_arm_teleop/ui
 npm run dev -- --host 0.0.0.0 --port 4173
 ```
 
@@ -79,10 +79,10 @@ npm run dev -- --host 0.0.0.0 --port 4173
 - `http://localhost:4173/`
 - или `http://<YOUR_HOST_IP>:4173/`
 
-### Production build
+### Сборка для production
 
 ```bash
-cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
+cd ~/silver_ws/src/silverhand_arm_teleop/ui
 npm run build
 ```
 
@@ -91,7 +91,7 @@ npm run build
 В репозитории есть helper-скрипт:
 
 ```bash
-cd /home/r/silver_ws/src/silverhand_arm_teleop
+cd ~/silver_ws/src/silverhand_arm_teleop
 ./silverhand_arm_teleop_start.sh
 ```
 
@@ -107,21 +107,21 @@ HOST=0.0.0.0 PORT=4174 ./silverhand_arm_teleop_start.sh
 
 ## systemd
 
-System service:
+Шаблон systemd-сервиса:
 
 - `systemd/system/silverhand-arm-teleop.service`
 
 Установка:
 
 ```bash
-sudo install -Dm644 /home/r/silver_ws/src/silverhand_arm_teleop/systemd/system/silverhand-arm-teleop.service /etc/systemd/system/silverhand-arm-teleop.service
+sudo install -Dm644 systemd/system/silverhand-arm-teleop.service /etc/systemd/system/silverhand-arm-teleop.service
 sudo systemctl daemon-reload
 ```
 
 Перед запуском сервиса UI должен быть собран:
 
 ```bash
-cd /home/r/silver_ws/src/silverhand_arm_teleop/ui
+cd ~/silver_ws/src/silverhand_arm_teleop/ui
 npm install
 npm run build
 ```
@@ -132,7 +132,7 @@ npm run build
 sudo systemctl enable --now silverhand-arm-teleop.service
 ```
 
-Автозапуск на старте системы уже обеспечивается systemd.
+Автозапуск при старте системы уже обеспечивает systemd.
 
 Полезные команды:
 
@@ -144,7 +144,7 @@ sudo systemctl restart silverhand-arm-teleop.service
 
 ## Подключение к роботу
 
-GUI сам по себе не ходит в ROS напрямую. Он подключается к robot-side websocket gateway.
+GUI сам по себе не ходит в ROS напрямую. Он подключается к шлюзу websocket на стороне робота.
 
 URL задаётся в сервисной панели, типичный пример:
 
@@ -152,9 +152,9 @@ URL задаётся в сервисной панели, типичный при
 ws://192.168.0.100:8765
 ```
 
-Внизу сервисной панели сейчас показываются:
+Внизу панели сейчас показываются:
 
-- текущее состояние backend
+- текущее состояние серверной части
 - несколько последних status/fault сообщений
 
 Это основной способ быстро понять:
@@ -165,21 +165,21 @@ ws://192.168.0.100:8765
 
 ## Типовые сценарии
 
-### 1. Локальный GUI + удалённый robot-side gateway
+### 1. Локальный GUI + удалённый шлюз робота
 
 Самый частый режим:
 
 1. На robot machine поднимаются:
    - `silverhand_system_bringup`
-   - `silverhand_arm_ws_gateway`
+   - `silverhand_ws_gateway`
 2. Здесь запускается только GUI.
 3. В GUI указывается `ws://<robot-ip>:8765`.
 
-### 2. Полностью локальный smoke test
+### 2. Полностью локальная smoke-проверка
 
 Для smoke/test режима можно поднять:
 
-- `silverhand_arm_ws_gateway --mode mock`
+- `ros2 run silverhand_ws_gateway gateway --mode mock`
 
 и подключить GUI к:
 
@@ -193,22 +193,22 @@ ws://127.0.0.1:8765
 - `gizmo` в TCP цели
 - `ghost target` в кинематической сцене
 - сглаживание входящих `joint_state` из websocket
-- service log внизу панели
+- журнал сервиса внизу панели
 
 ## Связанные пакеты
 
-Robot-side часть живёт отдельно:
+Часть на стороне робота живёт отдельно:
 
-- [silverhand_system_bringup](/home/r/silver_ws/src/silverhand_system_bringup)
-- [silverhand_arm_ws_gateway](/home/r/silver_ws/src/silverhand_arm_ws_gateway)
+- [silverhand_system_bringup](../silverhand_system_bringup)
+- [silverhand_ws_gateway](../silverhand_ws_gateway)
 
 Именно там запускаются:
 
-- direct `ros2_control`
+- непосредственный `ros2_control`
 - `MoveIt`
 - websocket bridge к GUI
 
-## Быстрый guide по systemd
+## Краткая памятка по systemd
 
 Общая схема для всех сервисов в проекте одинаковая:
 
@@ -220,7 +220,7 @@ source /opt/ros/jazzy/setup.bash
 colcon build
 ```
 
-2. Положить нужный `.service` или template в `~/.config/systemd/system/`
+2. Установить нужный `.service` или template в `/etc/systemd/system/`
 3. Выполнить:
 
 ```bash
@@ -231,13 +231,13 @@ sudo systemctl daemon-reload
 
 ```bash
 sudo systemctl enable --now silverhand-arm-teleop.service
-sudo systemctl enable --now silverhand-ws-gateway@moveit.service
-sudo systemctl enable --now silverhand-system-bringup@arm_hand_moveit_mock.service
+sudo systemctl enable --now silverhand-ws-gateway@arm_moveit.service
+sudo systemctl enable --now silverhand-system-bringup@arm_hand_moveit.service
 ```
 
 5. Смотреть статус и логи:
 
 ```bash
-systemctl status silverhand-ws-gateway@moveit.service
-journalctl -u silverhand-ws-gateway@moveit.service -f
+systemctl status silverhand-ws-gateway@arm_moveit.service
+journalctl -u silverhand-ws-gateway@arm_moveit.service -f
 ```
