@@ -3,6 +3,33 @@ type WHEPConnectOptions = {
   onConnectionStateChange?: (state: RTCPeerConnectionState) => void;
 };
 
+function waitForIceGatheringComplete(pc: RTCPeerConnection, timeoutMs: number): Promise<void> {
+  if (pc.iceGatheringState === "complete") {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      cleanup();
+      reject(new Error("ICE gathering timeout"));
+    }, timeoutMs);
+
+    const handleStateChange = () => {
+      if (pc.iceGatheringState === "complete") {
+        cleanup();
+        resolve();
+      }
+    };
+
+    const cleanup = () => {
+      window.clearTimeout(timer);
+      pc.removeEventListener("icegatheringstatechange", handleStateChange);
+    };
+
+    pc.addEventListener("icegatheringstatechange", handleStateChange);
+  });
+}
+
 function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
   return new Promise<T>((resolve, reject) => {
     const timer = window.setTimeout(() => {
@@ -63,6 +90,7 @@ export class WHEPClient {
 
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
+    await waitForIceGatheringComplete(pc, options.timeoutMs);
 
     const response = await fetch(this.whepUrl, {
       method: "POST",
